@@ -8,6 +8,10 @@ class_name UIControl extends Control
 ## The Tree for all ConstellationNode
 @export var _node_tree: Tree
 
+## The LineEdit to change the name of the local node
+@export var _name_edit: LineEdit
+
+
 ## How many seconds to wait before displaying the last seen time in seconds
 const TIMEOUT_BUFFER: int = 3
 
@@ -38,7 +42,12 @@ func _ready() -> void:
 	for node: ConstellationNode in Network.get_known_nodes():
 		_add_node(node)
 	
+	_name_edit.set_text(Network.get_node_name())
+	
 	Network.node_found.connect(_add_node)
+	Network.node_name_changed.connect(func (p_name: String):
+		_name_edit.set_text(p_name)
+	)
 
 
 ## Adds a node into the tree
@@ -99,3 +108,8 @@ func _on_tree_item_edited() -> void:
 	match _node_tree.get_edited_column():
 		Columns.NAME:
 			node.set_node_name(value)
+
+
+## Called when the text is changed in the name edit
+func _on_name_text_submitted(new_text: String) -> void:
+	Network.set_node_name(new_text)

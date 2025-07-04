@@ -84,13 +84,18 @@ func _process(delta: float) -> void:
 		var string: String = peer.get_packet().get_string_from_utf8()
 		var message: ConstaNetHeadder = ConstaNetHeadder.phrase_string(string)
 		
+		print(_node_name, " Got: ", message)
+		
 		if message.is_valid() and message.origin_id != _node_id:
 			handle_message(message, peer)
 
 
 ## Returns a list of all known nodes
-func get_known_nodes() -> Array:
-	return _known_nodes.values()
+func get_known_nodes() -> Array[ConstellationNode]:
+	var return_value: Array[ConstellationNode]
+	return_value.assign(_known_nodes.values())
+	
+	return return_value
 
 
 ## Gets this nodes NodeID
@@ -155,13 +160,18 @@ func handle_message(p_message: ConstaNetHeadder, p_peer: Object = null) -> void:
 func handle_set_attribute_message(p_message: ConstaNetSetAttribute) -> void:
 	match p_message.attribute:
 		ConstaNetSetAttribute.Attribute.NAME:
-			_set_node_name(p_message.value)
-			send_discovery()
+			set_node_name(p_message.value)
 
 
 ## Returns the name of the local node
 func get_node_name() -> String:
 	return _node_name
+
+
+## Sets the name of this node
+func set_node_name(p_name: String) -> void:
+	if _set_node_name(p_name):
+		send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 
 
 ## Sets the local nodes name

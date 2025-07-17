@@ -27,6 +27,8 @@ for ((i=0; i<NUM_INSTANCES; i++)); do
   echo "Starting Node$LETTER..."
   godot --path . --headless --node-name "Node$LETTER" &
   PIDS+=($!)
+
+  sleep 0.5
 done
 
 # Wait for all background processes

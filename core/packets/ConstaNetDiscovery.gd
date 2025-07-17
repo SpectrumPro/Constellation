@@ -12,6 +12,12 @@ var node_name: String = "UnNamedNode"
 ## The IP address of the origin node
 var node_ip: String = ""
 
+## The TCP port used by this node
+var tcp_port: int = 0
+
+## The UDP port used by this node
+var udp_port: int = 0
+
 
 ## Init
 func _init() -> void:
@@ -22,7 +28,9 @@ func _init() -> void:
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
 		"node_name": node_name,
-		"node_ip": node_ip
+		"node_ip": node_ip,
+		"tcp_port": tcp_port,
+		"udp_port": udp_port
 	}
 
 
@@ -30,11 +38,13 @@ func _get_as_dict() -> Dictionary[String, Variant]:
 func _phrase_dict(p_dict: Dictionary) -> void:
 	node_name = type_convert(p_dict.get("node_name", ""), TYPE_STRING)
 	node_ip = type_convert(p_dict.get("node_ip", ""), TYPE_STRING)
+	tcp_port = type_convert(p_dict.get("tcp_port", 0), TYPE_INT)
+	udp_port = type_convert(p_dict.get("udp_port", 0), TYPE_INT)
 
 
 ## Checks if this ConstaNetDiscovery is valid
 func _is_valid() -> bool:
-	if node_name and node_ip:
+	if node_name and node_ip and tcp_port and udp_port:
 		return true
 	
 	return false

@@ -14,6 +14,9 @@ signal node_name_changed(node_name: String)
 ## Emitted when the IP address of the remote node is changed
 signal node_ip_changed(ip: String)
 
+## Emitted when the Node joins a session
+signal session_joined(session: ConstellationSession)
+
 ## Emitted when the last seen time is changed, IE the node was just seen
 signal last_seen_changed(last_seen: float)
 
@@ -31,21 +34,42 @@ enum ConnectionState {
 	DISCOVERED,			## Node was found via discovery
 	CONNECTING,			## Attempting to establish connection
 	CONNECTED,			## Successfully connected and active
-	LOST_CONNECTION		## Node timed out or disconnected unexpectedly
+	LOST_CONNECTION,		## Node timed out or disconnected unexpectedly
+}
+
+## Enum for node flags
+enum NodeFlags {
+	NONE				= 0,		## Default state
+	LOCAL_NODE			= 1 << 0,	## This node is a Local node
 }
 
 
 ## Current state of the remote node local connection
 var _connection_state: ConnectionState = ConnectionState.UNKNOWN
 
+## Node Flags
+var _node_flags: int = NodeFlags.NONE
+
 ## The NodeID of the remote node
-var _node_id: String = ""
+var _node_id: String = UUID_Util.v4()
 
 ## The Name of the remote node
-var _node_name: String = ""
+var _node_name: String = "UnNamed ConstellationNode"
 
 ## The IP address of the remote node
 var _node_ip: String = ""
+
+## Local node state
+var _is_local: bool = false
+
+## The TCP port that the node is using
+var _node_tcp_port: int = 0
+
+## The UDP port that the node is using
+var _node_udp_port: int = 0
+
+## The Session
+var _session: ConstellationSession
 
 ## UNIX timestamp of the last time this node was seen on the network
 var _last_seen: float = 0
@@ -63,7 +87,18 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._node_name = p_disco.node_name
 	node._node_ip = p_disco.node_ip
 	node._last_seen = Time.get_unix_time_from_system()
-	node._udp_socket.connect_to_host(p_disco.node_ip, Network.UDP_PORT)
+	node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
+	
+	return node
+
+
+## Creates a new ConstellationNode in LocalNode mode
+static func create_local_node() -> ConstellationNode:
+	var node: ConstellationNode = ConstellationNode.new()
+	
+	node._is_local = true
+	node._connection_state = ConnectionState.CONNECTED
+	node._node_flags = NodeFlags.LOCAL_NODE
 	
 	return node
 
@@ -71,8 +106,10 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
 func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int) -> ConstaNetHeadder:
 	p_headder.origin_id = Network.get_node_id()
-	p_headder.target_id = _node_id
 	p_headder.flags |= p_flags
+	
+	if not is_local():
+		p_headder.target_id = _node_id
 	
 	return p_headder
 
@@ -83,10 +120,23 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 		MessageType.DISCOVERY:
 			_set_node_name(p_message.node_name)
 			_set_node_ip(p_message.node_ip)
-			_udp_socket.connect_to_host(p_message.node_ip, Network.UDP_PORT)
 			
 			_last_seen = Time.get_unix_time_from_system()
 			last_seen_changed.emit(_last_seen)
+		
+		MessageType.SESSION_ANNOUNCE:
+			if p_message.is_announcement() and p_message.nodes.has(_node_id):
+				_set_session(Network.get_session_from_id(p_message.session_id))
+		
+		MessageType.SESSION_JOIN:
+			_set_session(Network.get_session_from_id(p_message.session_id))
+		
+		MessageType.SET_ATTRIBUTE:
+			p_message = p_message as ConstaNetSetAttribute
+			
+			match p_message.attribute:
+				ConstaNetSetAttribute.Attribute.NAME:
+					_set_node_name(p_message.value)
 
 
 ## Sends a message via UDP to the remote node
@@ -105,6 +155,11 @@ func get_connection_state_human() -> String:
 	return ConnectionState.keys()[_connection_state].capitalize()
 
 
+## Gets the NodeFlags
+func get_node_flags() -> int:
+	return _node_flags
+
+
 ## Gets the Node's NodeID
 func get_node_id() -> String:
 	return _node_id
@@ -120,10 +175,28 @@ func get_node_ip() -> String:
 	return _node_ip
 
 
+## Gets the Node's Session
+func get_session() -> ConstellationSession:
+	return _session
+
+
+## Gets the current session ID, or ""
+func get_session_id() -> String:
+	if _session:
+		return _session.get_session_id()
+	
+	return ""
+
+
 ## Returns the last time this node was seen on the network
 func get_last_seen_time() -> float:
 	return _last_seen
 
+
+## Returns True if this node is local
+func is_local() -> bool:
+	return _node_flags & NodeFlags.LOCAL_NODE
+ 
 
 ## Sends a message to set the name of this node on the network
 func set_node_name(p_name: String) -> void:
@@ -132,7 +205,19 @@ func set_node_name(p_name: String) -> void:
 	set_attribute.attribute = ConstaNetSetAttribute.Attribute.NAME
 	set_attribute.value = p_name
 	
-	send_message_udp(set_attribute)
+	if is_local() and _set_node_name(p_name):
+		Network.send_message_broadcast(set_attribute)
+	else:
+		send_message_udp(set_attribute)
+
+
+## Sets the nodes ID
+func _set_node_id(p_node_id: String) -> bool:
+	if p_node_id == _node_id:
+		return false
+	
+	_node_id = p_node_id
+	return true
 
 
 ## Sets the nodes name
@@ -153,5 +238,16 @@ func _set_node_ip(p_node_ip: String) -> bool:
 	
 	_node_ip = p_node_ip
 	node_ip_changed.emit(_node_ip)
+	
+	return true
+
+
+## Sets the nodes session
+func _set_session(p_session: ConstellationSession) -> bool:
+	if _session == p_session:
+		return false
+	
+	_session = p_session
+	session_joined.emit(_session)
 	
 	return true

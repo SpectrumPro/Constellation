@@ -73,7 +73,7 @@ var _network_state: NetworkState = NetworkState.INITIALIZING
 var _found_relay_server: bool = true
 
 ## IP bind address
-var _bind_address: String = "192.168.1.73"
+var _bind_address: String = "127.0.0.1"
 
 ## The ConstellationNode for the local node
 var _local_node: ConstellationNode = ConstellationNode.create_local_node()
@@ -131,9 +131,6 @@ func _process(delta: float) -> void:
 	if _udp_socket.get_available_packet_count():
 		var string: String = _udp_socket.get_packet().get_string_from_utf8()
 		var message: ConstaNetHeadder = ConstaNetHeadder.phrase_string(string)
-		
-		#if message.type != ConstaNetHeadder.Type.DISCOVERY:
-			#print(message.get_as_dict())
 		
 		if message.origin_id == RelayServer.NODE_ID:
 			_found_relay_server = true

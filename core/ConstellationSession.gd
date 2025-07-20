@@ -14,6 +14,9 @@ signal node_left(node: ConstellationNode)
 ## Emitted when the SessionName is changed
 signal name_changed(name: String)
 
+## Emited when this session is to be deleted after all nodes disconnect
+signal request_delete()
+
 
 ## All nodes in this session
 var _nodes: Array[ConstellationNode]
@@ -149,5 +152,8 @@ func _remove_node(p_node: ConstellationNode) -> bool:
 	
 	_nodes.erase(p_node)
 	node_left.emit(p_node)
+	
+	if not get_number_of_nodes():
+		request_delete.emit()
 	
 	return true

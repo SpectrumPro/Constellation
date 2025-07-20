@@ -12,6 +12,9 @@ var node_name: String = "UnNamedNode"
 ## The IP address of the origin node
 var node_ip: String = ""
 
+## The NetworkRole of this node
+var role_flags: int = RoleFlags.EXECUTOR
+
 ## The TCP port used by this node
 var tcp_port: int = 0
 
@@ -29,6 +32,7 @@ func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
 		"node_name": node_name,
 		"node_ip": node_ip,
+		"role_flags": role_flags,
 		"tcp_port": tcp_port,
 		"udp_port": udp_port
 	}
@@ -38,6 +42,7 @@ func _get_as_dict() -> Dictionary[String, Variant]:
 func _phrase_dict(p_dict: Dictionary) -> void:
 	node_name = type_convert(p_dict.get("node_name", ""), TYPE_STRING)
 	node_ip = type_convert(p_dict.get("node_ip", ""), TYPE_STRING)
+	role_flags = type_convert(p_dict.get("role_flags", 0), TYPE_INT)
 	tcp_port = type_convert(p_dict.get("tcp_port", 0), TYPE_INT)
 	udp_port = type_convert(p_dict.get("udp_port", 0), TYPE_INT)
 

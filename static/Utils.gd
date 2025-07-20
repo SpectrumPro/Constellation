@@ -63,3 +63,16 @@ static func disconnect_signals_with_bind(signals: Dictionary, object: Object) ->
 			
 			_signal.disconnect(bound_callable)
 			connections.erase(callable_name)
+
+
+## Converts any bitmask enum into a readable string like "FLAG1+FLAG2"
+static func flags_to_string(p_flags: int, p_enum: Dictionary) -> String:
+	var names: Array[String] = []
+	
+	for name in p_enum.keys():
+		var value: int = p_enum[name]
+		
+		if value != 0 and (p_flags & value) != 0:
+			names.append(name)
+	
+	return "+".join(names)

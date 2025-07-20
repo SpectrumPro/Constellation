@@ -12,6 +12,12 @@ enum Columns {NAME, NODES, SESSION_ID}
 ## RefMap for ConstellationSession: TreeItem
 var _sessions: RefMap = RefMap.new()
 
+var _session_connections: Dictionary[String, Callable] = {
+	"node_joined": _on_node_joined_or_left,
+	"node_left": _on_node_joined_or_left,
+	"request_delete": _on_session_request_delete,
+}
+
 
 ## Ready
 func _ready() -> void:
@@ -26,6 +32,8 @@ func _ready() -> void:
 
 ## Called when a session is created on the network
 func _on_session_created(p_session: ConstellationSession) -> void:
+	Utils.connect_signals_with_bind(_session_connections, p_session)
+	
 	var session_item: TreeItem = create_item()
 	
 	session_item.set_text(Columns.NAME, p_session.get_name())
@@ -33,6 +41,17 @@ func _on_session_created(p_session: ConstellationSession) -> void:
 	session_item.set_text(Columns.SESSION_ID, p_session.get_session_id())
 	
 	_sessions.map(p_session, session_item)
+
+
+## Called when a node joines or leaves a session
+func _on_node_joined_or_left(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
+	_sessions.left(p_session).set_text(Columns.NODES, str(p_session.get_number_of_nodes()))
+
+
+## Called when a session is to be deleted when all nodes disconnect
+func _on_session_request_delete(p_session: ConstellationSession) -> void:
+	_sessions.left(p_session).free()
+	_sessions.erase_left(p_session)
 
 
 ## Called when the JoinSession Button is pressed

@@ -6,7 +6,7 @@
 [sub_resource type="LabelSettings" id="LabelSettings_b0spr"]
 outline_size = 1
 
-[node name="Control" type="Control" node_paths=PackedStringArray("_node_tree", "_name_edit", "_new_session_name_edit", "_current_session_label")]
+[node name="Control" type="Control" node_paths=PackedStringArray("_node_tree", "_name_edit", "_new_session_name_edit", "_current_session_label", "_network_role_label")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -18,6 +18,7 @@ _node_tree = NodePath("HBoxContainer/VBoxContainer/Tree")
 _name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/Name")
 _new_session_name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NewSessionName")
 _current_session_label = NodePath("HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer/SessionName")
+_network_role_label = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NetworkRole")
 
 [node name="HBoxContainer" type="HSplitContainer" parent="."]
 layout_mode = 1
@@ -58,6 +59,14 @@ custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 text = "Create Session"
 
+[node name="NetworkRolePrefix" type="Label" parent="HBoxContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "Role: "
+
+[node name="NetworkRole" type="Label" parent="HBoxContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+label_settings = SubResource("LabelSettings_b0spr")
+
 [node name="VBoxContainer2" type="VBoxContainer" parent="HBoxContainer"]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
@@ -74,10 +83,9 @@ text = "Current Session: "
 
 [node name="SessionName" type="Label" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
 layout_mode = 2
-text = "SessionName"
 label_settings = SubResource("LabelSettings_b0spr")
 
-[node name="Button" type="Button" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
+[node name="LeaveSession" type="Button" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 10
 text = "Leave"
@@ -104,5 +112,6 @@ autostart = true
 [connection signal="item_edited" from="HBoxContainer/VBoxContainer/Tree" to="." method="_on_tree_item_edited"]
 [connection signal="text_submitted" from="HBoxContainer/VBoxContainer/HBoxContainer/Name" to="." method="_on_name_text_submitted"]
 [connection signal="pressed" from="HBoxContainer/VBoxContainer/HBoxContainer/CreateSession" to="." method="_on_create_session_pressed"]
+[connection signal="pressed" from="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer/LeaveSession" to="." method="_on_leave_session_pressed"]
 [connection signal="pressed" from="HBoxContainer/VBoxContainer2/HBoxContainer/JoinSession" to="HBoxContainer/VBoxContainer2/SessionTree" method="_on_join_session_pressed"]
 [connection signal="timeout" from="LastSeen" to="." method="_on_last_seen_timeout"]

@@ -8,9 +8,6 @@ class_name RelayServer extends MainLoop
 ## Node of the RelayServer
 const NODE_ID: String = "RelayServer"
 
-## FilePath of the RelayServer
-const SCRIPT_PATH: String = "res://core/RelayServer.gd"
-
 ## UDP bind port
 const UDP_BROADCAST_PORT: int = 3823
 

@@ -29,7 +29,6 @@ enum Type {
 	SYS_EXCLUSIVE		# Device/vendor specific or extended data
 }
 
-
 ## Flags Enum (bitmask-compatible)
 enum Flags {
 	NONE				= 0,		# Default state
@@ -40,6 +39,13 @@ enum Flags {
 	RETRANSMISSION		= 1 << 4,	# This message has been re-transmitted from a RelayServer
 }
 
+## Enum for network roles
+enum RoleFlags {
+	NONE				= 0,
+	EXECUTOR			= 1 << 0,	# Performs the actions defined by the Controller
+	CONTROLLER			= 1 << 1,	# # Sends control and command messages to the Executer 
+}
+
 
 ## Matches the Type enum to a class
 static var ClassTypes: Dictionary[int, Script] = {
@@ -47,7 +53,8 @@ static var ClassTypes: Dictionary[int, Script] = {
 	Type.DISCOVERY: ConstaNetDiscovery,
 	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
 	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
-	Type.SESSION_JOIN: ConstaNetSessionJoin
+	Type.SESSION_JOIN: ConstaNetSessionJoin,
+	Type.SESSION_LEAVE: ConstaNetSessionLeave
 }
 
 

@@ -17,12 +17,15 @@ class_name UIControl extends Control
 ## The Label for the current session name
 @export var _current_session_label: Label
 
+## The Label for the NetworkRole
+@export var _network_role_label: Label
+
 
 ## How many seconds to wait before displaying the last seen time in seconds
 const TIMEOUT_BUFFER: int = 3
 
 ## All columns in the tree
-enum Columns {NAME, IP_ADDR, LAST_SEEN, CONNECTION_STATUS, SESSION_ID}
+enum Columns {NAME, IP_ADDR, ROLE_FLAGS, LAST_SEEN, CONNECTION_STATUS, SESSION_ID}
 
 
 ## RefMap for TreeItem: ConstellationNode
@@ -38,6 +41,7 @@ var _node_connections: Dictionary[String, Callable] = {
 	"last_seen_changed": _on_node_last_seen_changed,
 	"connection_state_changed": _on_node_connection_state_changed,
 	"session_joined": _on_node_session_joined,
+	"session_left": _on_node_session_left,
 }
 
 
@@ -55,8 +59,11 @@ func _ready() -> void:
 	Network.node_found.connect(_add_node)
 	
 	_local_node.session_joined.connect(_on_session_joined)
+	_local_node.session_left.connect(_on_session_left)
 	_local_node.node_name_changed.connect(_name_edit.set_text)
 	_name_edit.set_text(_local_node.get_node_name())
+	
+	_network_role_label.text = "Executor" if _local_node.is_executor() else "Controler"
 
 
 ## Adds a node into the tree
@@ -69,6 +76,7 @@ func _add_node(p_node: ConstellationNode) -> bool:
 	
 	tree_item.set_text(Columns.NAME, p_node.get_node_name())
 	tree_item.set_text(Columns.IP_ADDR, p_node.get_node_ip())
+	tree_item.set_text(Columns.ROLE_FLAGS, Utils.flags_to_string(p_node.get_role_flags(), ConstaNetHeadder.RoleFlags).capitalize())
 	tree_item.set_text(Columns.LAST_SEEN, "Now")
 	tree_item.set_text(Columns.CONNECTION_STATUS, p_node.get_connection_state_human())
 	tree_item.set_text(Columns.SESSION_ID, p_node.get_session_id())
@@ -104,9 +112,19 @@ func _on_node_session_joined(p_session: ConstellationSession, p_node: Constellat
 		_node_items.right(p_node).set_text(Columns.SESSION_ID, p_session.get_session_id())
 
 
+## Called when the Node joins a session
+func _on_node_session_left(p_node: ConstellationNode) -> void:
+	_node_items.right(p_node).set_text(Columns.SESSION_ID, "")
+
+
 ## Called when the local node joins a session
 func _on_session_joined(p_session: ConstellationSession) -> void:
 	_current_session_label.set_text(p_session.get_name())
+
+
+## Called when the local node leaves the current session
+func _on_session_left() -> void:
+	_current_session_label.set_text("")
 
 
 ## Called when the LastSeen timer times out
@@ -138,3 +156,8 @@ func _on_name_text_submitted(new_text: String) -> void:
 ## Called when the CreateSession button is pressed
 func _on_create_session_pressed() -> void:
 	Network.create_session(_new_session_name_edit.get_text())
+
+
+## Called when the LeaveSession button is pressed
+func _on_leave_session_pressed() -> void:
+	Network.leave_session()

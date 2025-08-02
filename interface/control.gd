@@ -47,6 +47,8 @@ var _node_connections: Dictionary[String, Callable] = {
 
 ## Ready
 func _ready() -> void:
+	OS.open_midi_inputs()
+	print(OS.get_connected_midi_inputs())
 	_node_tree.columns = len(Columns)
 	_node_tree.create_item()
 	

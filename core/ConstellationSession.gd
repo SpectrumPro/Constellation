@@ -11,6 +11,9 @@ signal node_joined(node: ConstellationNode)
 ## Emitted when a node leaves the session
 signal node_left(node: ConstellationNode)
 
+## Emitted when the session master is changes
+signal master_changed(node: ConstellationNode)
+
 ## Emitted when the SessionName is changed
 signal name_changed(name: String)
 
@@ -28,7 +31,7 @@ var _session_id: String = UUID_Util.v4()
 var _session_master: ConstellationNode
 
 ## Priority order
-var _priority_order: Dictionary[int, ConstellationNode]
+var _priority_order: Array[ConstellationNode]
 
 ## The name of this session
 var _name: String = "UnNamed ConstellationSession"
@@ -83,7 +86,7 @@ func get_session_master() -> ConstellationNode:
 
 
 ## Returns the priority order
-func get_priority_order() -> Dictionary[int, ConstellationNode]:
+func get_priority_order() -> Array[ConstellationNode]:
 	return _priority_order.duplicate()
 
 
@@ -107,6 +110,7 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 		return false
 	
 	_session_master = p_session_master
+	master_changed.emit(_session_master)
 	return true
 
 
@@ -142,6 +146,8 @@ func _add_node(p_node: ConstellationNode) -> bool:
 	_nodes.append(p_node)
 	node_joined.emit(p_node)
 	
+	_priority_order.append(p_node)
+	
 	return true
 
 
@@ -155,5 +161,11 @@ func _remove_node(p_node: ConstellationNode) -> bool:
 	
 	if not get_number_of_nodes():
 		request_delete.emit()
+	
+	else:
+		_priority_order.erase(p_node)
+		
+		if p_node == _session_master:
+			_set_session_master(_priority_order[0])
 	
 	return true

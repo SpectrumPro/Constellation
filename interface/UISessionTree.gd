@@ -6,7 +6,7 @@ class_name UISessionTree extends Tree
 
 
 ## Tree columns enum
-enum Columns {NAME, NODES, SESSION_ID}
+enum Columns {NAME, NODES, SESSION_MASTER, SESSION_ID}
 
 
 ## RefMap for ConstellationSession: TreeItem
@@ -15,6 +15,7 @@ var _sessions: RefMap = RefMap.new()
 var _session_connections: Dictionary[String, Callable] = {
 	"node_joined": _on_node_joined_or_left,
 	"node_left": _on_node_joined_or_left,
+	"master_changed": _on_session_master_changed,
 	"request_delete": _on_session_request_delete,
 }
 
@@ -38,6 +39,7 @@ func _on_session_created(p_session: ConstellationSession) -> void:
 	
 	session_item.set_text(Columns.NAME, p_session.get_name())
 	session_item.set_text(Columns.NODES, str(p_session.get_number_of_nodes()))
+	session_item.set_text(Columns.SESSION_MASTER, p_session.get_session_master().get_node_name())
 	session_item.set_text(Columns.SESSION_ID, p_session.get_session_id())
 	
 	_sessions.map(p_session, session_item)
@@ -46,6 +48,11 @@ func _on_session_created(p_session: ConstellationSession) -> void:
 ## Called when a node joines or leaves a session
 func _on_node_joined_or_left(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
 	_sessions.left(p_session).set_text(Columns.NODES, str(p_session.get_number_of_nodes()))
+
+
+## Called when the session master is changed
+func _on_session_master_changed(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
+	_sessions.left(p_session).set_text(Columns.SESSION_MASTER, p_node.get_node_name())
 
 
 ## Called when a session is to be deleted when all nodes disconnect

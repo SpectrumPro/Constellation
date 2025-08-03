@@ -1,5 +1,5 @@
-# Copyright (c) 2024 Liam Sherwin, All rights reserved.
-# This file is part of the Spectrum Lighting Engine, licensed under the GPL v3.
+# Copyright (c) 2025 Liam Sherwin, All rights reserved.
+# This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name UIControl extends Control
 ## Shows all ConstellationNodes in a tree
@@ -34,21 +34,19 @@ var _node_items: RefMap = RefMap.new()
 ## The local node
 var _local_node: ConstellationNode = Network.get_local_node()
 
-## Signals to connect to the ConstellationNode
-var _node_connections: Dictionary[String, Callable] = {
-	"node_name_changed": _on_node_name_changed,
-	"node_ip_changed": _on_node_ip_changed,
-	"last_seen_changed": _on_node_last_seen_changed,
-	"connection_state_changed": _on_node_connection_state_changed,
-	"session_joined": _on_node_session_joined,
-	"session_left": _on_node_session_left,
-}
+## SignalGroup for all nodes
+var _node_connections: SignalGroup = SignalGroup.new([
+	_on_node_name_changed,
+	_on_node_ip_changed,
+	_on_last_seen_changed,
+	_on_connection_state_changed,
+	_on_session_joined,
+	_on_session_left,
+])
 
 
 ## Ready
 func _ready() -> void:
-	OS.open_midi_inputs()
-	print(OS.get_connected_midi_inputs())
 	_node_tree.columns = len(Columns)
 	_node_tree.create_item()
 	
@@ -60,8 +58,8 @@ func _ready() -> void:
 	
 	Network.node_found.connect(_add_node)
 	
-	_local_node.session_joined.connect(_on_session_joined)
-	_local_node.session_left.connect(_on_session_left)
+	_local_node.session_joined.connect(_on_local_session_joined)
+	_local_node.session_left.connect(_on_local_session_left)
 	_local_node.node_name_changed.connect(_name_edit.set_text)
 	_name_edit.set_text(_local_node.get_node_name())
 	
@@ -73,7 +71,7 @@ func _add_node(p_node: ConstellationNode) -> bool:
 	if _node_items.has_right(p_node) or p_node == _local_node:
 		return false
 	
-	Utils.connect_signals_with_bind(_node_connections, p_node)
+	_node_connections.connect_object(p_node, true)
 	var tree_item: TreeItem = _node_tree.create_item()
 	
 	tree_item.set_text(Columns.NAME, p_node.get_node_name())
@@ -100,32 +98,32 @@ func _on_node_ip_changed(p_ip: String, p_node: ConstellationNode) -> void:
 
 
 ## Called when a Node's last seen time is updated
-func _on_node_last_seen_changed(p_last_seen: float, p_node: ConstellationNode) -> void:
+func _on_last_seen_changed(p_last_seen: float, p_node: ConstellationNode) -> void:
 	_node_items.right(p_node).set_text(Columns.LAST_SEEN, "Now")
 
 
 ## Called when the Node's connection state is changed
-func _on_node_connection_state_changed(p_connection_state: int, p_node: ConstellationNode) -> void:
+func _on_connection_state_changed(p_connection_state: int, p_node: ConstellationNode) -> void:
 	_node_items.right(p_node).set_text(Columns.CONNECTION_STATUS, p_node.get_connection_state_human())
 
 
 ## Called when the Node joins a session
-func _on_node_session_joined(p_session: ConstellationSession, p_node: ConstellationNode) -> void:
+func _on_session_joined(p_session: ConstellationSession, p_node: ConstellationNode) -> void:
 		_node_items.right(p_node).set_text(Columns.SESSION_ID, p_session.get_session_id())
 
 
 ## Called when the Node joins a session
-func _on_node_session_left(p_node: ConstellationNode) -> void:
+func _on_session_left(p_node: ConstellationNode) -> void:
 	_node_items.right(p_node).set_text(Columns.SESSION_ID, "")
 
 
 ## Called when the local node joins a session
-func _on_session_joined(p_session: ConstellationSession) -> void:
+func _on_local_session_joined(p_session: ConstellationSession) -> void:
 	_current_session_label.set_text(p_session.get_name())
 
 
 ## Called when the local node leaves the current session
-func _on_session_left() -> void:
+func _on_local_session_left() -> void:
 	_current_session_label.set_text("")
 
 
@@ -163,3 +161,7 @@ func _on_create_session_pressed() -> void:
 ## Called when the LeaveSession button is pressed
 func _on_leave_session_pressed() -> void:
 	Network.leave_session()
+
+
+func _on_breakpoint_pressed() -> void:
+	OS.crash("")

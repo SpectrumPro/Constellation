@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3 uid="uid://l4acdcn3n761"]
+[gd_scene load_steps=5 format=3 uid="uid://l4acdcn3n761"]
 
 [ext_resource type="Script" uid="uid://yphcdwkqpfa8" path="res://interface/control.gd" id="1_f0it3"]
 [ext_resource type="Script" uid="uid://vyvd3pv31kio" path="res://interface/UISessionTree.gd" id="2_b0spr"]
+[ext_resource type="Script" uid="uid://dqbhcjmbdjia0" path="res://interface/SessionMasterOrder.gd" id="3_da6ht"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_b0spr"]
 outline_size = 1
@@ -17,7 +18,7 @@ script = ExtResource("1_f0it3")
 _node_tree = NodePath("HBoxContainer/VBoxContainer/Tree")
 _name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/Name")
 _new_session_name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NewSessionName")
-_current_session_label = NodePath("HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer/SessionName")
+_current_session_label = NodePath("HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer/SessionName")
 _network_role_label = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NetworkRole")
 
 [node name="HBoxContainer" type="HSplitContainer" parent="."]
@@ -67,30 +68,40 @@ text = "Role: "
 layout_mode = 2
 label_settings = SubResource("LabelSettings_b0spr")
 
-[node name="VBoxContainer2" type="VBoxContainer" parent="HBoxContainer"]
+[node name="Breakpoint" type="Button" parent="HBoxContainer/VBoxContainer/HBoxContainer"]
+modulate = Color(5.525, 0, 0, 1)
+layout_mode = 2
+text = "CR"
+
+[node name="VSplitContainer" type="VSplitContainer" parent="HBoxContainer"]
+layout_mode = 2
+split_offset = 145
+
+[node name="VBoxContainer2" type="VBoxContainer" parent="HBoxContainer/VSplitContainer"]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
+size_flags_vertical = 3
 
-[node name="PanelContainer" type="PanelContainer" parent="HBoxContainer/VBoxContainer2"]
+[node name="PanelContainer" type="PanelContainer" parent="HBoxContainer/VSplitContainer/VBoxContainer2"]
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/VBoxContainer2/PanelContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer"]
 layout_mode = 2
 
-[node name="CurrentSessionPrefix" type="Label" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
+[node name="CurrentSessionPrefix" type="Label" parent="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
 layout_mode = 2
 text = "Current Session: "
 
-[node name="SessionName" type="Label" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
+[node name="SessionName" type="Label" parent="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
 layout_mode = 2
 label_settings = SubResource("LabelSettings_b0spr")
 
-[node name="LeaveSession" type="Button" parent="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
+[node name="LeaveSession" type="Button" parent="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 10
 text = "Leave"
 
-[node name="SessionTree" type="Tree" parent="HBoxContainer/VBoxContainer2"]
+[node name="SessionTree" type="Tree" parent="HBoxContainer/VSplitContainer/VBoxContainer2"]
 layout_mode = 2
 size_flags_vertical = 3
 column_titles_visible = true
@@ -98,13 +109,58 @@ hide_root = true
 select_mode = 1
 script = ExtResource("2_b0spr")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/VBoxContainer2"]
+[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/VSplitContainer/VBoxContainer2"]
 layout_mode = 2
 
-[node name="JoinSession" type="Button" parent="HBoxContainer/VBoxContainer2/HBoxContainer"]
+[node name="JoinSession" type="Button" parent="HBoxContainer/VSplitContainer/VBoxContainer2/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Join"
+
+[node name="SessionMasterOrder" type="VBoxContainer" parent="HBoxContainer/VSplitContainer" node_paths=PackedStringArray("_order_tree", "_selection_button", "_move_order_up", "_move_order_down")]
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("3_da6ht")
+_order_tree = NodePath("OrderTree")
+_selection_button = NodePath("HBoxContainer2/SessionSelection")
+_move_order_up = NodePath("HBoxContainer/MoveOrderUp")
+_move_order_down = NodePath("HBoxContainer/MoveOrderDown")
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="HBoxContainer/VSplitContainer/SessionMasterOrder"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2"]
+layout_mode = 2
+text = "Session:"
+
+[node name="SessionSelection" type="OptionButton" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2"]
+layout_mode = 2
+size_flags_horizontal = 3
+selected = 0
+allow_reselect = true
+item_count = 1
+popup/item_0/text = "Select Session"
+popup/item_0/id = 0
+popup/item_0/separator = true
+
+[node name="OrderTree" type="Tree" parent="HBoxContainer/VSplitContainer/SessionMasterOrder"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HBoxContainer" type="HBoxContainer" parent="HBoxContainer/VSplitContainer/SessionMasterOrder"]
+layout_mode = 2
+
+[node name="MoveOrderUp" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "UP"
+
+[node name="MoveOrderDown" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "DOWN"
 
 [node name="LastSeen" type="Timer" parent="."]
 autostart = true
@@ -112,6 +168,8 @@ autostart = true
 [connection signal="item_edited" from="HBoxContainer/VBoxContainer/Tree" to="." method="_on_tree_item_edited"]
 [connection signal="text_submitted" from="HBoxContainer/VBoxContainer/HBoxContainer/Name" to="." method="_on_name_text_submitted"]
 [connection signal="pressed" from="HBoxContainer/VBoxContainer/HBoxContainer/CreateSession" to="." method="_on_create_session_pressed"]
-[connection signal="pressed" from="HBoxContainer/VBoxContainer2/PanelContainer/HBoxContainer/LeaveSession" to="." method="_on_leave_session_pressed"]
-[connection signal="pressed" from="HBoxContainer/VBoxContainer2/HBoxContainer/JoinSession" to="HBoxContainer/VBoxContainer2/SessionTree" method="_on_join_session_pressed"]
+[connection signal="pressed" from="HBoxContainer/VBoxContainer/HBoxContainer/Breakpoint" to="." method="_on_breakpoint_pressed"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer/LeaveSession" to="." method="_on_leave_session_pressed"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/HBoxContainer/JoinSession" to="HBoxContainer/VSplitContainer/VBoxContainer2/SessionTree" method="_on_join_session_pressed"]
+[connection signal="item_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2/SessionSelection" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_session_selection_item_selected"]
 [connection signal="timeout" from="LastSeen" to="." method="_on_last_seen_timeout"]

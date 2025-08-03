@@ -23,6 +23,9 @@ signal session_left()
 ## Emitted when the last seen time is changed, IE the node was just seen
 signal last_seen_changed(last_seen: float)
 
+## Emitted if this node becomes the master of its session
+signal is_now_session_master
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -70,6 +73,9 @@ var _node_ip: String = ""
 
 ## Local node state
 var _is_local: bool = false
+
+## Session master state
+var _is_session_master: bool = false
 
 ## The TCP port that the node is using
 var _node_tcp_port: int = 0
@@ -288,6 +294,11 @@ func is_controller(p_flags: int) -> bool:
 	return (_role_flags & RoleFlags.CONTROLLER) != 0
 
 
+## Returns true if this node is the master of its session
+func is_sesion_master() -> bool:
+	return _is_session_master
+
+
 ## Sends a message to set the name of this node on the network
 func set_node_name(p_name: String) -> void:
 	var set_attribute: ConstaNetSetAttribute = auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
@@ -359,6 +370,8 @@ func _set_session(p_session: ConstellationSession) -> bool:
 	
 	_session = p_session
 	session_joined.emit(_session)
+	
+	_remove_session_master_mark()
 	_session._add_node(self)
 	
 	return true
@@ -374,3 +387,14 @@ func _leave_session() -> bool:
 	session_left.emit()
 	
 	return true
+
+
+## Marks this node as the session master
+func _mark_as_session_master() -> void:
+	_is_session_master = true
+	is_now_session_master.emit()
+
+
+## Marks this node as not being the session master
+func _remove_session_master_mark() -> void:
+	_is_session_master = false

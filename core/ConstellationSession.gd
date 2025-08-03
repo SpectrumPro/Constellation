@@ -36,6 +36,11 @@ var _priority_order: Array[ConstellationNode]
 ## The name of this session
 var _name: String = "UnNamed ConstellationSession"
 
+## SignalGroup for all nodes
+var _node_connections: SignalGroup = SignalGroup.new([
+	_on_node_connection_state_changed
+]).set_prefix("_on_node_")
+
 
 ## Creates a new session from a ConstaNetSessionAnnounce message
 static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) -> ConstellationSession:
@@ -48,7 +53,7 @@ static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) ->
 	for node_id: String in p_message.nodes:
 		var node: ConstellationNode = Network.get_node_from_id(node_id)
 		if node:
-			session._nodes.append(node)
+			session._add_node(node)
 	
 	return session
 
@@ -111,6 +116,8 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	
 	_session_master = p_session_master
 	master_changed.emit(_session_master)
+	p_session_master._mark_as_session_master()
+	
 	return true
 
 
@@ -132,7 +139,7 @@ func _set_node_array(p_node_array: Array[ConstellationNode]) -> void:
 			new_nodes.erase(current_node)
 		
 		else:
-			_remove_node(current_node)
+			_remove_node(current_node, true)
 	
 	for new_node: ConstellationNode in new_nodes:
 		_add_node(new_node)
@@ -147,25 +154,38 @@ func _add_node(p_node: ConstellationNode) -> bool:
 	node_joined.emit(p_node)
 	
 	_priority_order.append(p_node)
+	_node_connections.connect_object(p_node, true)
 	
 	return true
 
 
 ## Removes a node from this session
-func _remove_node(p_node: ConstellationNode) -> bool:
+func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 	if p_node not in _nodes:
 		return false
 	
 	_nodes.erase(p_node)
 	node_left.emit(p_node)
 	
-	if not get_number_of_nodes():
+	if not get_number_of_nodes() and not p_no_delete:
 		request_delete.emit()
 	
 	else:
 		_priority_order.erase(p_node)
+		_node_connections.disconnect_object(p_node, true)
 		
 		if p_node == _session_master:
 			_set_session_master(_priority_order[0])
 	
 	return true
+
+
+## Called when the ConnectionState changes on any node in this session
+func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
+	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name())
+	
+	if p_connection_state == ConstellationNode.ConnectionState.LOST_CONNECTION:
+		_priority_order.erase(p_node)
+		
+		if p_node == _session_master:
+			_set_session_master(_priority_order[0])

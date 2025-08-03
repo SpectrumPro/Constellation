@@ -31,7 +31,6 @@ var _sessions: Array[ConstellationSession] = [null]
 ## SignalGroup for each session
 var _session_connections: SignalGroup = SignalGroup.new([
 	_on_session_request_delete,
-]).no_bind([
 	_on_session_node_joined,
 	_on_session_node_left,
 ]).set_prefix("_on_session_")
@@ -90,13 +89,15 @@ func _on_session_request_delete(p_session: ConstellationSession) -> void:
 
 
 ## Called when a node joins the session
-func _on_session_node_joined(p_node: ConstellationNode) -> void:
-	_reload_tree(_session)
+func _on_session_node_joined(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
+	if p_session == _session:
+		_reload_tree(_session)
 
 
 ## Called when a node leaves the session
-func _on_session_node_left(p_node: ConstellationNode) -> void:
-	_reload_tree(_session)
+func _on_session_node_left(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
+	if p_session == _session:
+		_reload_tree(_session)
 
 
 ## Called when an item is selected in the session selection button

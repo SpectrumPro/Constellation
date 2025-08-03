@@ -139,10 +139,7 @@ func _process(delta: float) -> void:
 		
 		match status:
 			StreamPeerTCP.Status.STATUS_NONE:
-				if Time.get_unix_time_from_system() - _last_seen > Network.DISCO_DISCONNECT_TIME:
-					_set_connection_status(ConnectionState.LOST_CONNECTION)
-				else:
-					_set_connection_status(ConnectionState.DISCOVERED)
+				_set_connection_status(ConnectionState.DISCOVERED)
 			
 			StreamPeerTCP.Status.STATUS_CONNECTING:
 				_set_connection_status(ConnectionState.CONNECTING)
@@ -179,6 +176,9 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 			
 			_last_seen = Time.get_unix_time_from_system()
 			last_seen_changed.emit(_last_seen)
+			
+			if _connection_state == ConnectionState.LOST_CONNECTION:
+				_set_connection_status(ConnectionState.DISCOVERED)
 		
 		MessageType.SESSION_ANNOUNCE:
 			if p_message.is_announcement() and p_message.nodes.has(_node_id):

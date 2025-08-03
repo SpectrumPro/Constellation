@@ -184,7 +184,7 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
 	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name())
 	
-	if p_connection_state == ConstellationNode.ConnectionState.LOST_CONNECTION:
+	if p_connection_state != ConstellationNode.ConnectionState.CONNECTED:
 		_priority_order.erase(p_node)
 		
 		if p_node == _session_master:

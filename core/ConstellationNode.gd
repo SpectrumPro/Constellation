@@ -139,7 +139,7 @@ func _process(delta: float) -> void:
 		
 		match status:
 			StreamPeerTCP.Status.STATUS_NONE:
-				_set_connection_status(ConnectionState.DISCOVERED)
+				_set_connection_status(ConnectionState.LOST_CONNECTION)
 			
 			StreamPeerTCP.Status.STATUS_CONNECTING:
 				_set_connection_status(ConnectionState.CONNECTING)

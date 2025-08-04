@@ -156,6 +156,12 @@ size_flags_horizontal = 3
 disabled = true
 text = "UP"
 
+[node name="MakeMaster" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "MSTR"
+
 [node name="MoveOrderDown" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -172,4 +178,9 @@ autostart = true
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer/LeaveSession" to="." method="_on_leave_session_pressed"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/HBoxContainer/JoinSession" to="HBoxContainer/VSplitContainer/VBoxContainer2/SessionTree" method="_on_join_session_pressed"]
 [connection signal="item_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2/SessionSelection" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_session_selection_item_selected"]
+[connection signal="item_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/OrderTree" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_order_tree_item_selected"]
+[connection signal="nothing_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/OrderTree" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_order_tree_nothing_selected"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MoveOrderUp" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_move_order_up_pressed"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MakeMaster" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_make_master_pressed"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MoveOrderDown" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_move_order_down_pressed"]
 [connection signal="timeout" from="LastSeen" to="." method="_on_last_seen_timeout"]

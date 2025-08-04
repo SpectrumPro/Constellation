@@ -14,6 +14,9 @@ signal node_left(node: ConstellationNode)
 ## Emitted when the session master is changes
 signal master_changed(node: ConstellationNode)
 
+## Emitted when the priority order of a node is changed
+signal priority_changed(node: ConstellationNode, position: int)
+
 ## Emitted when the SessionName is changed
 signal name_changed(name: String)
 
@@ -48,11 +51,11 @@ static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) ->
 	
 	session._session_id = p_message.session_id
 	session._name = p_message.session_name
-	session._session_master = Network.get_node_from_id(p_message.session_master)
 	
 	for node_id: String in p_message.nodes:
 		var node: ConstellationNode = Network.get_node_from_id(node_id)
 		if node:
+			prints("Adding node: ", node.get_node_name())
 			session._add_node(node)
 	
 	return session
@@ -66,6 +69,29 @@ func update_with(p_message: ConstaNetSessionAnnounce) -> bool:
 	_set_session_master(Network.get_node_from_id(p_message.session_master))
 	_set_name(p_message.session_name)
 	_set_node_array(Network.get_node_array(p_message))
+	
+	return true
+
+
+## Sets the position of a node in the priority order
+func set_priority_order(p_node: ConstellationNode, p_position: int) -> bool:
+	if p_node not in _nodes:
+		return false
+	
+	var pos: int = _set_priority_order(p_node, p_position)
+	
+	if pos == -1:
+		return false
+	
+	var message: ConstaNetSessionSetPriority = ConstaNetSessionSetPriority.new()
+	
+	message.session_id = _session_id
+	message.node_id = p_node.get_node_id()
+	message.position = pos
+	message.origin_id = Network.get_node_id()
+	message.set_announcement(true)
+	
+	Network.send_message_broadcast(message)
 	
 	return true
 
@@ -95,6 +121,11 @@ func get_priority_order() -> Array[ConstellationNode]:
 	return _priority_order.duplicate()
 
 
+## Returns the priority order
+func get_priority_of(p_node: ConstellationNode) -> int:
+	return _priority_order.find(p_node)
+
+
 ## Gets the session name
 func get_name() -> String:
 	return _name
@@ -114,10 +145,15 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if p_session_master == _session_master:
 		return false
 	
-	_session_master = p_session_master
-	master_changed.emit(_session_master)
-	p_session_master._mark_as_session_master()
+	if _session_master:
+		_session_master._remove_session_master_mark()
 	
+	_session_master = p_session_master
+	
+	if _session_master:
+		_session_master._mark_as_session_master()
+	
+	master_changed.emit(_session_master)
 	return true
 
 
@@ -145,16 +181,38 @@ func _set_node_array(p_node_array: Array[ConstellationNode]) -> void:
 		_add_node(new_node)
 
 
+## Internal function to Set the position of a node in the priority order
+func _set_priority_order(p_node: ConstellationNode, p_position: int) -> int:
+	if p_position > len(_priority_order) - 1:
+		return -1
+	
+	_priority_order.remove_at(_priority_order.find(p_node))
+	_priority_order.insert(p_position, p_node)
+	
+	var position: int = _priority_order.find(p_node)
+	
+	priority_changed.emit(p_node, position)
+	return position
+
+
 ## Adds a node into this session
 func _add_node(p_node: ConstellationNode) -> bool:
+	
+	if Network.get_local_node().get_node_name() == "NodeA":
+		#breakpoint
+		pass
+	
 	if p_node in _nodes:
 		return false
 	
 	_nodes.append(p_node)
-	node_joined.emit(p_node)
-	
 	_priority_order.append(p_node)
 	_node_connections.connect_object(p_node, true)
+	
+	node_joined.emit(p_node)
+	
+	if not _session_master and _priority_order[0] == p_node:
+		_set_session_master(p_node)
 	
 	return true
 
@@ -165,17 +223,21 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 		return false
 	
 	_nodes.erase(p_node)
-	node_left.emit(p_node)
 	
 	if not get_number_of_nodes() and not p_no_delete:
+		node_left.emit(p_node)
 		request_delete.emit()
+		
+		return true
 	
 	else:
 		_priority_order.erase(p_node)
 		_node_connections.disconnect_object(p_node, true)
 		
 		if p_node == _session_master:
-			_set_session_master(_priority_order[0])
+			_set_session_master(_priority_order[0] if _priority_order else null)
+		
+		node_left.emit(p_node)
 	
 	return true
 
@@ -184,8 +246,9 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
 	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name())
 	
-	if p_connection_state != ConstellationNode.ConnectionState.CONNECTED:
-		_priority_order.erase(p_node)
-		
-		if p_node == _session_master:
-			_set_session_master(_priority_order[0])
+	match p_connection_state:
+		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:
+			_priority_order.erase(p_node)
+			
+			if p_node == _session_master:
+				_set_session_master(_priority_order[0] if _priority_order else null)

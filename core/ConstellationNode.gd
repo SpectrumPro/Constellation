@@ -113,8 +113,6 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._last_seen = Time.get_unix_time_from_system()
 	node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
 	
-	print("Creating node:", p_disco.node_name, " TCPPort: ", p_disco.tcp_port)
-	
 	return node
 
 

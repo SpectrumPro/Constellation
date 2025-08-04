@@ -127,7 +127,7 @@ func handle_incomming_packet(p_packet: PackedByteArray, p_stream: StreamPeerTCP 
 		
 		return true
 	
-	else:
+	elif message:
 		if not message.is_valid():
 			return false
 		
@@ -136,6 +136,9 @@ func handle_incomming_packet(p_packet: PackedByteArray, p_stream: StreamPeerTCP 
 			_udp_peer.set_dest_address(node.disco.node_ip, node.disco.udp_port)
 			_udp_peer.put_packet(message.get_as_packet())
 		
+		return false
+	
+	else:
 		return false
 
 

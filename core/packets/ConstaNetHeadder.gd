@@ -10,23 +10,22 @@ const VERSION: int = 1
 
 ## Type Enum
 enum Type {
-	UNKNOWN, 			# Init base state
+	UNKNOWN, 				# Init base state
 	
-	DISCOVERY,			# Client/server broadcasts "Who’s there?"
-	COMMAND,			# Lighting cue or control command
+	DISCOVERY,				# Client/server broadcasts "Who’s there?"
+	COMMAND,				# Lighting cue or control command
 	
-	SET_ATTRIBUTE,		# Sets an attribute on a node, name, ipaddress, ect..
-	STATE_REQUEST,		# Request full state sync
-	HEARTBEAT,			# Periodic alive signal
+	SET_ATTRIBUTE,			# Sets an attribute on a node, name, ipaddress, ect..
+	STATE_REQUEST,			# Request full state sync
+	HEARTBEAT,				# Periodic alive signal
 	
-	PRIORITY_SET,		# Set failover priority
-	PRIORITY_GET,		# Get failover priority
+	SESSION_ANNOUNCE,		# Announces a new session
+	SESSION_JOIN,			# New node joining a session
+	SESSION_LEAVE,			# Node leaving a session
+	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
+	SESSION_SET_MASTER,		# Sets the master of the session
 	
-	SESSION_ANNOUNCE,	# Announces a new session
-	SESSION_JOIN,		# New node joining a session
-	SESSION_LEAVE,		# Node leaving a session
-	
-	SYS_EXCLUSIVE		# Device/vendor specific or extended data
+	SYS_EXCLUSIVE			# Device/vendor specific or extended data
 }
 
 ## Flags Enum (bitmask-compatible)
@@ -54,7 +53,9 @@ static var ClassTypes: Dictionary[int, Script] = {
 	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
 	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
 	Type.SESSION_JOIN: ConstaNetSessionJoin,
-	Type.SESSION_LEAVE: ConstaNetSessionLeave
+	Type.SESSION_LEAVE: ConstaNetSessionLeave,
+	Type.SESSION_SET_PRIORITY: ConstaNetSessionSetPriority,
+	Type.SESSION_SET_MASTER: ConstaNetSessionSetMaster
 }
 
 

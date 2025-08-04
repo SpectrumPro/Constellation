@@ -52,7 +52,7 @@ func _on_node_joined_or_left(p_node: ConstellationNode, p_session: Constellation
 
 ## Called when the session master is changed
 func _on_session_master_changed(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
-	_sessions.left(p_session).set_text(Columns.SESSION_MASTER, p_node.get_node_name())
+	_sessions.left(p_session).set_text(Columns.SESSION_MASTER, p_node.get_node_name() if p_node else "NULL")
 
 
 ## Called when a session is to be deleted when all nodes disconnect

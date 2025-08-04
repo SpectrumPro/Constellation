@@ -332,7 +332,7 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 	if p_message.type == MessageType.DISCOVERY and p_message.flags & ConstaNetHeadder.Flags.REQUEST:
 		send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 	
-	print(p_message.get_as_string())
+	#print(p_message.get_as_string())
 	
 	match p_message.type:
 		MessageType.DISCOVERY:
@@ -345,6 +345,13 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 		
 		MessageType.SESSION_ANNOUNCE:
 			handle_session_announce_message(p_message)
+		
+		MessageType.SESSION_SET_PRIORITY:
+			var node: ConstellationNode = get_node_from_id(p_message.node_id)
+			var session: ConstellationSession = get_session_from_id(p_message.session_id)
+			
+			if node and session:
+				session._set_priority_order(node, p_message.position)
 	
 	if p_message.target_id in _known_nodes:
 		_known_nodes[p_message.target_id].handle_message(p_message)

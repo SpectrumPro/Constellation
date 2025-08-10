@@ -20,6 +20,12 @@ class_name UIControl extends Control
 ## The Label for the NetworkRole
 @export var _network_role_label: Label
 
+## The OptionButton for setting a nodes session
+@export var _set_session_option: SessionSelectButton
+
+## The Label to display the network state
+@export var _network_state_label: Label
+
 
 ## How many seconds to wait before displaying the last seen time in seconds
 const TIMEOUT_BUFFER: int = 3
@@ -57,6 +63,12 @@ func _ready() -> void:
 		_add_node(node)
 	
 	Network.node_found.connect(_add_node)
+	Network.network_state_changed.connect(func (p_state: Network.NetworkState):
+		_network_state_label.text = Network.NetworkState.keys()[p_state]
+		
+		if p_state == Network.NetworkState.OFFLINE:
+			_reset()
+	)
 	
 	_local_node.session_joined.connect(_on_local_session_joined)
 	_local_node.session_left.connect(_on_local_session_left)
@@ -85,6 +97,16 @@ func _add_node(p_node: ConstellationNode) -> bool:
 	
 	_node_items.map(tree_item, p_node)
 	return true
+
+
+## Resets the UI
+func _reset() -> void:
+	for node: ConstellationNode in _node_items.get_right():
+		_node_connections.disconnect_object(node)
+	
+	_node_items.clear()
+	_node_tree.clear()
+	_node_tree.create_item()
 
 
 ## Called when a Node's name is changed
@@ -148,6 +170,17 @@ func _on_tree_item_edited() -> void:
 			node.set_node_name(value)
 
 
+## Called when an item is selected in the tree
+func _on_tree_item_selected() -> void:
+	_set_session_option.disabled = false
+
+
+## Called when nothing is selected in the tree
+func _on_tree_nothing_selected() -> void:
+	_set_session_option.disabled = true
+	_node_tree.deselect_all()
+
+
 ## Called when the text is changed in the name edit
 func _on_name_text_submitted(new_text: String) -> void:
 	_local_node.set_node_name(new_text)
@@ -163,6 +196,25 @@ func _on_leave_session_pressed() -> void:
 	Network.leave_session()
 
 
+## Called when a session is selected
+func _on_set_session_option_session_selected(p_session: ConstellationSession) -> void:
+	var node: ConstellationNode = _node_items.left(_node_tree.get_selected())
+	
+	if p_session:
+		node.join_session(p_session)
+	else:
+		node.leave_session()
+
+
+## Called when the breakppoint button is pressed
 func _on_breakpoint_pressed() -> void:
-	OS.crash("")
-	#breakpoint
+	#OS.crash("")
+	breakpoint
+
+
+## Called when the networtk state switch is toggled
+func _on_network_state_toggle_toggled(toggled_on: bool) -> void:
+	if toggled_on:
+		Network.start_node()
+	else:
+		Network.stop_node()

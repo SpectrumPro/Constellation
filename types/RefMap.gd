@@ -13,43 +13,43 @@ var _right: Dictionary = {}
 
 
 ## Maps 2 items, returning false if the map failed
-func map(left: Variant, right: Variant) -> void:
-	_left[left] = right
-	_right[right] = left
+func map(p_left: Variant, p_right: Variant) -> void:
+	_left[p_left] = p_right
+	_right[p_right] = p_left
 
 
 ## Creates a new RefMap from a Dictionary
-static func from(dictionary: Dictionary) -> RefMap:
-	var map: RefMap = RefMap.new()
+static func from(p_dictionary: Dictionary) -> RefMap:
+	var ref_map: RefMap = RefMap.new()
 
-	for key: Variant in dictionary:
-		map.map(key, dictionary[key])
+	for key: Variant in p_dictionary:
+		ref_map.map(key, p_dictionary[key])
 
-	return map
+	return ref_map
 
 
 ## Gets an item from the map using the left key
-func left(key: Variant) -> Variant:
-	return _left.get(key, null)
+func left(p_key: Variant) -> Variant:
+	return _left.get(p_key, null)
 
 
 ## Gets an item from the map using the right key
-func right(key: Variant) -> Variant:
-	return _right.get(key, null)
+func right(p_key: Variant) -> Variant:
+	return _right.get(p_key, null)
 
 
 ## Erases an item from the map using the left key
-func erase_left(key: Variant) -> void:
-	var right: Variant = left(key)
-	_right.erase(right)
-	_left.erase(key)
+func erase_left(p_key: Variant) -> void:
+	var p_right: Variant = left(p_key)
+	_right.erase(p_right)
+	_left.erase(p_key)
 
 
 ## Erases an item from the map using the right key
-func erase_right(key: Variant) -> void:
-	var left: Variant = right(key)
-	_left.erase(left)
-	_right.erase(key)
+func erase_right(p_key: Variant) -> void:
+	var p_left: Variant = right(p_key)
+	_left.erase(p_left)
+	_right.erase(p_key)
 
 
 ## Returns all left keys
@@ -63,13 +63,13 @@ func get_right() -> Array:
 
 
 ## Checks if the left side has a variant
-func has_left(variant: Variant) -> bool:
-	return _left.has(variant)
+func has_left(p_variant: Variant) -> bool:
+	return _left.has(p_variant)
 
 
 ## Checks if the left side has a variant
-func has_right(variant: Variant) -> bool:
-	return _right.has(variant)
+func has_right(p_variant: Variant) -> bool:
+	return _right.has(p_variant)
 
 
 ## Gets this RefMap as a dictonary

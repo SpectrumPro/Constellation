@@ -10,9 +10,12 @@ signal node_found(node: ConstellationNode)
 ## Emitted when a session is created on the network
 signal session_created(session: ConstellationSession)
 
+## Emitted when the network state is changed
+signal network_state_changed(network_state: NetworkState)
+
 
 ## Enum for the current network state
-enum NetworkState {INITIALIZING, BOUND, BOUND_ERROR, RELAY_ERROR, READY}
+enum NetworkState {OFFLINE, INITIALIZING, BOUND, BOUND_ERROR, RELAY_ERROR, READY}
 
 
 ## List of allowed host OSes to start the broadcast relay on
@@ -40,7 +43,7 @@ const RELAY_WAIT_TIME: int = 1
 const RELAY_BOOT_WAIT_TIME: int = 1
 
 ## Max retry count to contact the RelayServer
-const RELAY_MAX_RETRIES: int = 50
+const RELAY_MAX_RETRIES: int = 10
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -74,7 +77,7 @@ var _relay_tcp_stream: StreamPeerTCP = StreamPeerTCP.new()
 var _udp_broadcast_socket: PacketPeerUDP = PacketPeerUDP.new()
 
 ## Current NetworkState
-var _network_state: NetworkState = NetworkState.INITIALIZING
+var _network_state: NetworkState = NetworkState.OFFLINE
 
 ## Network Role
 var _role_flags: int = RoleFlags.EXECUTOR
@@ -104,7 +107,6 @@ func _init() -> void:
 	Details.print_startup_detils()
 	
 	_local_node._set_node_ip(_bind_address)
-	_known_nodes[get_node_id()] = _local_node
 	add_child(_local_node)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
@@ -117,28 +119,6 @@ func _init() -> void:
 	
 	if cli_args.has("--interface"):
 		_bind_address = str(cli_args[cli_args.find("--interface") + 1])
-	
-	bind_network()
-	if _network_state != NetworkState.BOUND:
-		print("Error staring network")
-		return
-	
-	else:
-		print("")
-		_broadcast_relay_socket.connect_to_host(NETWORK_LOOPBACK, UDP_BROADCAST_PORT)
-	
-	var relay_start_allowed: bool = false
-	for host: String in BROADCAST_RELAY_ALLOWED_HOSTS:
-		if OS.has_feature(host):
-			relay_start_allowed = true
-			_found_relay_server = false
-			break
-	
-	if relay_start_allowed:
-		find_and_connect_relay()
-		
-	else:
-		begin_discovery()
 
 
 ## Polls the socket
@@ -200,6 +180,65 @@ func get_node_array(p_from: ConstaNetSessionAnnounce) -> Array[ConstellationNode
 	return typed_array
 
 
+## Starts the node
+func start_node() -> void:
+	if _network_state != NetworkState.OFFLINE:
+		return
+	
+	stop_node()
+	_set_network_state(NetworkState.INITIALIZING)
+	_known_nodes[get_node_id()] = _local_node
+	
+	bind_network()
+	if _network_state != NetworkState.BOUND:
+		print("Error staring network")
+		return
+	
+	else:
+		print("")
+		_broadcast_relay_socket.connect_to_host(NETWORK_LOOPBACK, UDP_BROADCAST_PORT)
+	
+	var relay_start_allowed: bool = false
+	for host: String in BROADCAST_RELAY_ALLOWED_HOSTS:
+		if OS.has_feature(host):
+			relay_start_allowed = true
+			_found_relay_server = false
+			break
+	
+	if relay_start_allowed:
+		find_and_connect_relay()
+		
+	else:
+		_set_network_state(NetworkState.READY)
+		begin_discovery()
+
+
+## Stops the node
+func stop_node() -> void:
+	_tcp_socket.stop()
+	_udp_socket.close()
+	_relay_tcp_stream.disconnect_from_host()
+	_broadcast_relay_socket.close()
+	_udp_broadcast_socket.close()
+	_relay_tcp_queue.clear()
+	
+	for node: ConstellationNode in _known_nodes.values():
+		node.close()
+	
+	for session: ConstellationSession in _known_sessions.values():
+		session.close()
+	
+	_local_node._set_session(null)
+	
+	_known_nodes.clear()
+	_known_sessions.clear()
+	
+	_found_relay_server = false
+	_disco_timer.stop()
+	
+	_set_network_state(NetworkState.OFFLINE)
+
+
 ## Starts this node, opens network connection
 func bind_network() -> void:
 	_udp_broadcast_socket.set_broadcast_enabled(true)
@@ -221,15 +260,18 @@ func bind_network() -> void:
 		print("UDP bound on port: ", _udp_port)
 	
 	if not tcp_error and not udp_error:
-		_network_state = NetworkState.BOUND
+		_set_network_state(NetworkState.BOUND)
 		set_process(true)
 	
 	else:
-		_network_state = NetworkState.BOUND_ERROR
+		_set_network_state(NetworkState.BOUND_ERROR)
 
 
 ## Sends a message to UDP Broadcast
 func send_message_broadcast(p_message: ConstaNetHeadder) -> Error:
+	if _network_state == NetworkState.OFFLINE:
+		return ERR_UNAVAILABLE
+	
 	return _udp_broadcast_socket.put_packet(p_message.get_as_string().to_utf8_buffer())
 
 
@@ -256,13 +298,13 @@ func send_discovery(p_flags = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
 
 ## Starts the discovery stage
 func begin_discovery() -> void:
-	_network_state = NetworkState.READY
-	
 	_disco_timer.wait_time = DISCO_TIMEOUT
-	_disco_timer.autostart = true
-	_disco_timer.timeout.connect(_on_disco_timeout)
 	
-	add_child(_disco_timer)
+	if not _disco_timer.timeout.is_connected(_on_disco_timeout):
+		_disco_timer.autostart = true
+		_disco_timer.timeout.connect(_on_disco_timeout)
+		add_child(_disco_timer)
+	
 	send_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
@@ -291,6 +333,8 @@ func find_and_connect_relay() -> void:
 		
 		_relay_tcp_stream.connect_to_host(NETWORK_LOOPBACK, RelayServer.TCP_PORT)
 		_relay_tcp_queue.append(relay_disco)
+		
+		_set_network_state(NetworkState.READY)
 		begin_discovery()
 	
 	else:
@@ -310,9 +354,11 @@ func find_and_connect_relay() -> void:
 			
 			_relay_tcp_queue.append(relay_disco)
 			begin_discovery()
+			_set_network_state(NetworkState.READY)
+		
 		else:
 			print("Unable to contact RelayServer after retries: ", retries)
-			_network_state = NetworkState.RELAY_ERROR
+			_set_network_state(NetworkState.RELAY_ERROR)
 
 
 ## Handles a packet as a PackedByteArray
@@ -329,10 +375,11 @@ func handle_packet(p_packet: PackedByteArray) -> void:
 
 ## Handles an incomming message, 
 func handle_message(p_message: ConstaNetHeadder) -> void:
+	if p_message.target_id and p_message.target_id != get_node_id():
+		return
+	
 	if p_message.type == MessageType.DISCOVERY and p_message.flags & ConstaNetHeadder.Flags.REQUEST:
 		send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
-	
-	#print(p_message.get_as_string())
 	
 	match p_message.type:
 		MessageType.DISCOVERY:
@@ -352,9 +399,16 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 			
 			if node and session:
 				session._set_priority_order(node, p_message.position)
+		
+		MessageType.SESSION_SET_MASTER:
+			var node: ConstellationNode = get_node_from_id(p_message.node_id)
+			var session: ConstellationSession = get_session_from_id(p_message.session_id)
+			
+			if node and session:
+				session._set_session_master(node)
 	
-	if p_message.target_id in _known_nodes:
-		_known_nodes[p_message.target_id].handle_message(p_message)
+	if p_message.target_id == get_node_id():
+		_local_node.handle_message(p_message)
 	
 	elif not p_message.target_id and p_message.origin_id in _known_nodes:
 		_known_nodes[p_message.origin_id].handle_message(p_message)
@@ -404,7 +458,7 @@ func create_session(p_name: String) -> ConstellationSession:
 
 ## Joins a pre-existing session on the network
 func join_session(p_session: ConstellationSession) -> bool:
-	if _local_node.get_session():
+	if _local_node.get_session() or not p_session:
 		return false
 	
 	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
@@ -428,17 +482,29 @@ func leave_session() -> bool:
 		return false
 	
 	var message: ConstaNetSessionLeave = ConstaNetSessionLeave.new()
+	var session: ConstellationSession = _local_node.get_session()
+	_local_node._leave_session()
 	
 	message.origin_id = get_node_id()
-	message.session_id = _local_node.get_session().get_session_id()
+	message.session_id = session.get_session_id()
 	message.set_request(true)
 	
 	send_message_broadcast(message)
 	
-	for node: ConstellationNode in _local_node.get_session().get_nodes():
+	for node: ConstellationNode in session.get_nodes():
 		node.disconnect_tcp()
 	
-	_local_node._leave_session()
+	return true
+
+
+## Sets the network state
+func _set_network_state(p_network_state: NetworkState) -> bool:
+	if p_network_state == _network_state:
+		return false
+	
+	_network_state = p_network_state
+	network_state_changed.emit(_network_state)
+	
 	return true
 
 

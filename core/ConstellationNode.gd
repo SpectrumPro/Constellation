@@ -168,12 +168,22 @@ func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int) -> ConstaNetHe
 
 ## Handles a message
 func handle_message(p_message: ConstaNetHeadder) -> void:
+	print(p_message.get_as_string())
 	match p_message.type:
 		MessageType.DISCOVERY:
 			_set_node_name(p_message.node_name)
 			
 			_last_seen = Time.get_unix_time_from_system()
 			last_seen_changed.emit(_last_seen)
+			
+			if p_message.tcp_port != _node_tcp_port:
+				_node_tcp_port = p_message.tcp_port
+				connect_tcp()
+			
+			if p_message.udp_port != _node_udp_port:
+				_node_udp_port = p_message.udp_port
+				_udp_socket.close()
+				_udp_socket.connect_to_host(_node_ip, _node_udp_port)
 			
 			if _connection_state == ConnectionState.LOST_CONNECTION:
 				_set_connection_status(ConnectionState.DISCOVERED)
@@ -202,6 +212,11 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 			match p_message.attribute:
 				ConstaNetSetAttribute.Attribute.NAME:
 					_set_node_name(p_message.value)
+				
+				ConstaNetSetAttribute.Attribute.SESSION:
+					if is_local():
+						var session: ConstellationSession = Network.get_session_from_id(p_message.value)
+						Network.join_session(session) if session else Network.leave_session() 
 
 
 ## Sends a message via UDP to the remote node
@@ -222,6 +237,48 @@ func connect_tcp() -> Error:
 ## Disconnects TCP from this node
 func disconnect_tcp() -> void:
 	_tcp_socket.disconnect_from_host()
+
+
+## Closes this nodes local object
+func close() -> void:
+	disconnect_tcp()
+	_udp_socket.close()
+	
+	_connection_state = ConnectionState.UNKNOWN
+
+
+## Joins the given session
+func join_session(p_session: ConstellationSession) -> bool:
+	if not p_session:
+		return false
+	
+	if is_local():
+		return Network.join_session(p_session)
+	
+	var set_attribute: ConstaNetSetAttribute = auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
+	
+	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	set_attribute.value = p_session.get_session_id()
+	
+	send_message_udp(set_attribute)
+	return true
+
+
+## Leavs the current session
+func leave_session() -> bool:
+	if not get_session():
+		return false
+	
+	if is_local():
+		return Network.leave_session()
+	
+	var set_attribute: ConstaNetSetAttribute = auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
+	
+	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	set_attribute.value = ""
+	
+	send_message_udp(set_attribute)
+	return true
 
 
 ## Gets the network role

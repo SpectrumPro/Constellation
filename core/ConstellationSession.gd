@@ -17,9 +17,6 @@ signal master_changed(node: ConstellationNode)
 ## Emitted when the priority order of a node is changed
 signal priority_changed(node: ConstellationNode, position: int)
 
-## Emitted when the SessionName is changed
-signal name_changed(name: String)
-
 ## Emited when this session is to be deleted after all nodes disconnect
 signal request_delete()
 
@@ -92,7 +89,22 @@ func set_priority_order(p_node: ConstellationNode, p_position: int) -> bool:
 	message.set_announcement(true)
 	
 	Network.send_message_broadcast(message)
+	return true
+
+
+## Sets the session master
+func set_master(p_node: ConstellationNode) -> bool:
+	if not _set_session_master(p_node):
+		return false
 	
+	var message: ConstaNetSessionSetMaster = ConstaNetSessionSetMaster.new()
+	
+	message.session_id = _session_id
+	message.node_id = p_node.get_node_id()
+	message.origin_id = Network.get_node_id()
+	message.set_announcement(true)
+	
+	Network.send_message_broadcast(message)
 	return true
 
 
@@ -131,6 +143,18 @@ func get_name() -> String:
 	return _name
 
 
+## Closes this sessions local object
+func close() -> void:
+	_set_session_master(null)
+	_priority_order.clear()
+	
+	for node: ConstellationNode in _nodes:
+		_remove_node(node)
+		_node_connections.disconnect_object(node)
+	
+	_nodes.clear()
+
+
 ## Sets the SessionID
 func _set_session_id(p_session_id: String) -> bool:
 	if p_session_id == _session_id:
@@ -142,7 +166,7 @@ func _set_session_id(p_session_id: String) -> bool:
 
 ## Sets the session master node
 func _set_session_master(p_session_master: ConstellationNode) -> bool:
-	if p_session_master == _session_master:
+	if p_session_master == _session_master or p_session_master not in _nodes:
 		return false
 	
 	if _session_master:
@@ -244,7 +268,10 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 
 ## Called when the ConnectionState changes on any node in this session
 func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
-	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name())
+	if Network.get_local_node() not in _nodes:
+		return
+	
+	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name(), "From Node:", Network.get_local_node().get_node_name())
 	
 	match p_connection_state:
 		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:

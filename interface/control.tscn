@@ -1,13 +1,14 @@
-[gd_scene load_steps=5 format=3 uid="uid://l4acdcn3n761"]
+[gd_scene load_steps=6 format=3 uid="uid://l4acdcn3n761"]
 
 [ext_resource type="Script" uid="uid://yphcdwkqpfa8" path="res://interface/control.gd" id="1_f0it3"]
 [ext_resource type="Script" uid="uid://vyvd3pv31kio" path="res://interface/UISessionTree.gd" id="2_b0spr"]
 [ext_resource type="Script" uid="uid://dqbhcjmbdjia0" path="res://interface/SessionMasterOrder.gd" id="3_da6ht"]
+[ext_resource type="Script" uid="uid://cxrvld30r3oix" path="res://interface/SessionSelectButton.gd" id="4_qhwe1"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_b0spr"]
 outline_size = 1
 
-[node name="Control" type="Control" node_paths=PackedStringArray("_node_tree", "_name_edit", "_new_session_name_edit", "_current_session_label", "_network_role_label")]
+[node name="Control" type="Control" node_paths=PackedStringArray("_node_tree", "_name_edit", "_new_session_name_edit", "_current_session_label", "_network_role_label", "_set_session_option", "_network_state_label")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -20,6 +21,8 @@ _name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/Name")
 _new_session_name_edit = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NewSessionName")
 _current_session_label = NodePath("HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer/SessionName")
 _network_role_label = NodePath("HBoxContainer/VBoxContainer/HBoxContainer/NetworkRole")
+_set_session_option = NodePath("HBoxContainer/VBoxContainer/HBoxContainer2/SetSessionOption")
+_network_state_label = NodePath("HBoxContainer/VBoxContainer/HBoxContainer2/NetworkState")
 
 [node name="HBoxContainer" type="HSplitContainer" parent="."]
 layout_mode = 1
@@ -32,6 +35,30 @@ grow_vertical = 2
 [node name="VBoxContainer" type="VBoxContainer" parent="HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="HBoxContainer2" type="HBoxContainer" parent="HBoxContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HBoxContainer/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+text = "Set Session:"
+
+[node name="SetSessionOption" type="OptionButton" parent="HBoxContainer/VBoxContainer/HBoxContainer2"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+disabled = true
+allow_reselect = true
+script = ExtResource("4_qhwe1")
+
+[node name="NetworkState" type="Label" parent="HBoxContainer/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+size_flags_horizontal = 10
+text = "OFFLINE"
+
+[node name="NetworkStateToggle" type="CheckButton" parent="HBoxContainer/VBoxContainer/HBoxContainer2"]
+layout_mode = 2
+size_flags_horizontal = 8
+text = "Network State"
 
 [node name="Tree" type="Tree" parent="HBoxContainer/VBoxContainer"]
 layout_mode = 2
@@ -117,14 +144,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Join"
 
-[node name="SessionMasterOrder" type="VBoxContainer" parent="HBoxContainer/VSplitContainer" node_paths=PackedStringArray("_order_tree", "_selection_button", "_move_order_up", "_move_order_down")]
+[node name="SessionMasterOrder" type="VBoxContainer" parent="HBoxContainer/VSplitContainer" node_paths=PackedStringArray("_order_tree", "_buttons")]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("3_da6ht")
 _order_tree = NodePath("OrderTree")
-_selection_button = NodePath("HBoxContainer2/SessionSelection")
-_move_order_up = NodePath("HBoxContainer/MoveOrderUp")
-_move_order_down = NodePath("HBoxContainer/MoveOrderDown")
+_buttons = [NodePath("HBoxContainer/MoveOrderUp"), NodePath("HBoxContainer/MakeMaster"), NodePath("HBoxContainer/Kick"), NodePath("HBoxContainer/MoveOrderDown")]
 
 [node name="HBoxContainer2" type="HBoxContainer" parent="HBoxContainer/VSplitContainer/SessionMasterOrder"]
 layout_mode = 2
@@ -136,12 +161,8 @@ text = "Session:"
 [node name="SessionSelection" type="OptionButton" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2"]
 layout_mode = 2
 size_flags_horizontal = 3
-selected = 0
 allow_reselect = true
-item_count = 1
-popup/item_0/text = "Select Session"
-popup/item_0/id = 0
-popup/item_0/separator = true
+script = ExtResource("4_qhwe1")
 
 [node name="OrderTree" type="Tree" parent="HBoxContainer/VSplitContainer/SessionMasterOrder"]
 layout_mode = 2
@@ -151,18 +172,28 @@ size_flags_vertical = 3
 layout_mode = 2
 
 [node name="MoveOrderUp" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
 text = "UP"
 
 [node name="MakeMaster" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
 text = "MSTR"
 
+[node name="Kick" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+disabled = true
+text = "KICK"
+
 [node name="MoveOrderDown" type="Button" parent="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer"]
+custom_minimum_size = Vector2(50, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 disabled = true
@@ -171,16 +202,22 @@ text = "DOWN"
 [node name="LastSeen" type="Timer" parent="."]
 autostart = true
 
+[connection signal="session_selected" from="HBoxContainer/VBoxContainer/HBoxContainer2/SetSessionOption" to="." method="_on_set_session_option_session_selected"]
+[connection signal="toggled" from="HBoxContainer/VBoxContainer/HBoxContainer2/NetworkStateToggle" to="." method="_on_network_state_toggle_toggled"]
 [connection signal="item_edited" from="HBoxContainer/VBoxContainer/Tree" to="." method="_on_tree_item_edited"]
+[connection signal="item_selected" from="HBoxContainer/VBoxContainer/Tree" to="." method="_on_tree_item_selected"]
+[connection signal="nothing_selected" from="HBoxContainer/VBoxContainer/Tree" to="." method="_on_tree_nothing_selected"]
 [connection signal="text_submitted" from="HBoxContainer/VBoxContainer/HBoxContainer/Name" to="." method="_on_name_text_submitted"]
 [connection signal="pressed" from="HBoxContainer/VBoxContainer/HBoxContainer/CreateSession" to="." method="_on_create_session_pressed"]
 [connection signal="pressed" from="HBoxContainer/VBoxContainer/HBoxContainer/Breakpoint" to="." method="_on_breakpoint_pressed"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/PanelContainer/HBoxContainer/LeaveSession" to="." method="_on_leave_session_pressed"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/VBoxContainer2/HBoxContainer/JoinSession" to="HBoxContainer/VSplitContainer/VBoxContainer2/SessionTree" method="_on_join_session_pressed"]
 [connection signal="item_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2/SessionSelection" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_session_selection_item_selected"]
+[connection signal="session_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer2/SessionSelection" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_session_selection_session_selected"]
 [connection signal="item_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/OrderTree" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_order_tree_item_selected"]
 [connection signal="nothing_selected" from="HBoxContainer/VSplitContainer/SessionMasterOrder/OrderTree" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_order_tree_nothing_selected"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MoveOrderUp" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_move_order_up_pressed"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MakeMaster" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_make_master_pressed"]
+[connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/Kick" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_kick_pressed"]
 [connection signal="pressed" from="HBoxContainer/VSplitContainer/SessionMasterOrder/HBoxContainer/MoveOrderDown" to="HBoxContainer/VSplitContainer/SessionMasterOrder" method="_on_move_order_down_pressed"]
 [connection signal="timeout" from="LastSeen" to="." method="_on_last_seen_timeout"]

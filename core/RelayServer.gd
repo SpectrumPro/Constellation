@@ -36,11 +36,15 @@ var _node_streams: RefMap = RefMap.new()
 ## Connected TCP Peers
 var _peers: Array[StreamPeerTCP]
 
+## Debug brick state
+var _is_bricked: bool = false
 
 ## Init 
 func _initialize():
 	print("RelayServer: Initializing")
 	OS.set_thread_name("RelayServer")
+	
+	_is_bricked = "--bricked" in OS.get_cmdline_args()
 	
 	var tcp_error: Error = _tcp_server.listen(TCP_PORT, NETWORK_LOOPBACK)
 	if tcp_error == ERR_ALREADY_IN_USE:
@@ -53,10 +57,15 @@ func _initialize():
 		return
 	
 	print("RelayServer: Ready")
+	if _is_bricked:
+		print("RelayServer: BRICKED")
 
 
 ## Process
 func _process(delta):
+	if _is_bricked:
+		return
+	
 	while _udp_peer.get_available_packet_count():
 		handle_incomming_packet(_udp_peer.get_packet())
 	

@@ -7,9 +7,10 @@ class_name ConstaNetSetAttribute extends ConstaNetHeadder
 
 ## Attribute Enum
 enum Attribute {
-	UNKNOWN,
-	NAME,
-	IP_ADDR,
+	UNKNOWN,		## Default State
+	NAME,			## Sets the name of a device
+	IP_ADDR,		## Sets the Ip Address of a supported device
+	SESSION,		## Tells the device to join the given session
 }
 
 

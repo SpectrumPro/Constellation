@@ -22,8 +22,6 @@ static var ascii_name: String = """
 
 ## Function to print all the details
 static func print_startup_detils() -> void:
-	var colored_text: String = ascii_name
-
 	print(ascii_name, "Version: " + version)
 	print()
 	print(copyright)

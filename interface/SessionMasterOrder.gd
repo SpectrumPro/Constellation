@@ -8,14 +8,8 @@ class_name UISessionMasterOrder extends Control
 ## The tree to show the order
 @export var _order_tree: Tree
 
-## The OptionButton to choose the Session
-@export var _selection_button: OptionButton
-
-## Button to move the selected item up
-@export var _move_order_up: Button
-
-## Button to move the selected item down
-@export var _move_order_down: Button
+## ActionButtons
+@export var _buttons: Array[Button]
 
 
 ## Columns enu
@@ -24,9 +18,6 @@ enum Columns {NAME}
 
 ## The selected session
 var _session: ConstellationSession
-
-## Sore all sessions shown in the selection button
-var _sessions: Array[ConstellationSession] = [null]
 
 ## RefMap for TreeItem: ConstellationNode
 var _items: RefMap = RefMap.new()
@@ -63,8 +54,7 @@ func _reload_tree(p_session: ConstellationSession) -> void:
 	_order_tree.create_item()
 	_items.clear()
 	
-	_move_order_up.set_disabled(true)
-	_move_order_down.set_disabled(true)
+	_set_buttons_disabled(true)
 	
 	if p_session:
 	
@@ -75,25 +65,25 @@ func _reload_tree(p_session: ConstellationSession) -> void:
 			node_item.set_text(Columns.NAME, node.get_node_name())
 
 
+## Sets all the buttons disabled state
+func _set_buttons_disabled(p_disabled: bool) -> void:
+	for button: Button in _buttons:
+		button.disabled = p_disabled
+
+
+## Called when a session is selected
+func _on_session_selection_session_selected(p_session: ConstellationSession) -> void:
+	set_session(p_session)
+
+
 ## Called when a session is created
 func _on_session_created(p_session: ConstellationSession) -> void:
 	_session_connections.connect_object(p_session, true)
-	
-	var index: int = _selection_button.selected
-	
-	_sessions.append(p_session)
-	_selection_button.add_item(p_session.get_name(), _sessions.find(p_session))
-	
-	_selection_button.select(index)
 
 
 ## Called when a session is to be deleted
 func _on_session_request_delete(p_session: ConstellationSession) -> void:
 	_session_connections.disconnect_object(p_session, true)
-	
-	_selection_button.remove_item(_sessions.find(p_session))
-	_selection_button.select(0)
-	_sessions.erase(p_session)
 	
 	if p_session == _session:
 		set_session(null)
@@ -118,26 +108,15 @@ func _on_session_priority_changed(p_node: ConstellationNode, p_position: int, p_
 		_reload_tree(p_session)
 
 
-## Called when an item is selected in the session selection button
-func _on_session_selection_item_selected(index: int) -> void:
-	if index:
-		set_session(_sessions[index])
-	else:
-		set_session(null)
-
-
 ## Called when nothing is selected in the tree
 func _on_order_tree_nothing_selected() -> void:
-	_move_order_up.set_disabled(true)
-	_move_order_down.set_disabled(true)
-	
+	_set_buttons_disabled(true)
 	_order_tree.deselect_all()
 
 
 ## Called when an item is selected in the tree
 func _on_order_tree_item_selected() -> void:
-	_move_order_up.set_disabled(false)
-	_move_order_down.set_disabled(false)
+	_set_buttons_disabled(false)
 
 
 ## Called when the move up button is pressed
@@ -156,4 +135,12 @@ func _on_move_order_down_pressed() -> void:
 
 ## Called when the make master button is pressed
 func _on_make_master_pressed() -> void:
-	pass # Replace with function body.
+	var node: ConstellationNode = _items.left(_order_tree.get_selected())
+	
+	_session.set_master(node)
+
+
+## Called when the kick button is pressed
+func _on_kick_pressed() -> void:
+	var node: ConstellationNode = _items.left(_order_tree.get_selected())
+	node.leave_session()

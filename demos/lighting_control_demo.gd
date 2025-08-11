@@ -9,6 +9,9 @@ class_name LightingControlDemo extends Control
 ## The ColorRect to use
 @export var color_rect: ColorRect
 
+## The Toggle button
+@export var _toggle_button: Button
+
 
 ## IP address of node to connect to
 var _ip_address: String = "192.168.1.255"
@@ -38,9 +41,8 @@ var _speed: float = 0.5
 func _ready() -> void:
 	Engine.max_fps = 40
 	
-	Network.get_local_node().is_now_session_master.connect(func ():
-		set_output_state(true)
-	)
+	Network.get_local_node().is_now_session_master.connect(set_output_state.bind(true))
+	Network.get_local_node().is_now_longer_session_master.connect(set_output_state.bind(false))
 
 
 func _process(delta: float) -> void:
@@ -60,13 +62,17 @@ func start():
 	_udp_peer.set_broadcast_enabled(_use_broadcast)
 	var err: Error = _udp_peer.set_dest_address(_ip_address, _port)
 	_connection_state = true
+	
+	_toggle_button.modulate = Color(0, 100, 0)
+
 
 ## Called when this output is stoped
-
 func stop():
 	output({})
 	_udp_peer.close()
 	_connection_state = false
+	
+	_toggle_button.modulate = Color(100, 0, 0)
 
 
 ## Called when this output it told to output

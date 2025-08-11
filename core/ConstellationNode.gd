@@ -26,6 +26,9 @@ signal last_seen_changed(last_seen: float)
 ## Emitted if this node becomes the master of its session
 signal is_now_session_master
 
+## Emitted if this node is no longer the master of its session
+signal is_now_longer_session_master
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -453,3 +456,4 @@ func _mark_as_session_master() -> void:
 ## Marks this node as not being the session master
 func _remove_session_master_mark() -> void:
 	_is_session_master = false
+	is_now_longer_session_master.emit()

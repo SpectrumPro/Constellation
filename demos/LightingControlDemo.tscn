@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://ddu031v8xlyjn" path="res://demos/lighting_control_demo.gd" id="1_0npmv"]
 [ext_resource type="PackedScene" uid="uid://l4acdcn3n761" path="res://interface/control.tscn" id="2_im5of"]
 
-[node name="LightingControlDemo" type="Control" node_paths=PackedStringArray("color_rect")]
+[node name="LightingControlDemo" type="Control" node_paths=PackedStringArray("color_rect", "_toggle_button")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -12,6 +12,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_0npmv")
 color_rect = NodePath("HSplitContainer/PanelContainer/VBoxContainer/ColorRect")
+_toggle_button = NodePath("HSplitContainer/PanelContainer/VBoxContainer/ToggleOutput")
 
 [node name="HSplitContainer" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -36,6 +37,7 @@ custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 
 [node name="ToggleOutput" type="Button" parent="HSplitContainer/PanelContainer/VBoxContainer"]
+modulate = Color(100, 1, 1, 1)
 layout_mode = 2
 toggle_mode = true
 text = "Toggle Output"

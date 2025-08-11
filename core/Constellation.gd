@@ -86,7 +86,7 @@ var _role_flags: int = RoleFlags.EXECUTOR
 var _found_relay_server: bool = true
 
 ## IP bind address
-var _bind_address: String = "192.168.1.73"
+var _bind_address: String = "127.0.0.1"
 
 ## The ConstellationNode for the local node
 var _local_node: ConstellationNode = ConstellationNode.create_local_node()
@@ -121,7 +121,7 @@ func _init() -> void:
 		_bind_address = str(cli_args[cli_args.find("--interface") + 1])
 	
 	if cli_args.has("--node-id"):
-		_local_node.set_node_id(str(cli_args[cli_args.find("--node-id") + 1]))
+		_local_node._set_node_id(str(cli_args[cli_args.find("--node-id") + 1]))
 
 
 ## Polls the socket

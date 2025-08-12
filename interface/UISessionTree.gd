@@ -12,12 +12,21 @@ enum Columns {NAME, NODES, SESSION_MASTER, SESSION_ID}
 ## RefMap for ConstellationSession: TreeItem
 var _sessions: RefMap = RefMap.new()
 
+## All previous session masters
+var _previous_session_masters: Dictionary[ConstellationSession, ConstellationNode]
+
+## Signal connections for each session
 var _session_connections: Dictionary[String, Callable] = {
 	"node_joined": _on_node_joined_or_left,
 	"node_left": _on_node_joined_or_left,
 	"master_changed": _on_session_master_changed,
 	"request_delete": _on_session_request_delete,
 }
+
+## SignalGroup for the session masters
+var _session_master_connections: SignalGroup = SignalGroup.new([
+	_on_session_master_node_name_changed
+]).set_prefix("_on_session_master_")
 
 
 ## Ready
@@ -34,15 +43,16 @@ func _ready() -> void:
 ## Called when a session is created on the network
 func _on_session_created(p_session: ConstellationSession) -> void:
 	Utils.connect_signals_with_bind(_session_connections, p_session)
-	
 	var session_item: TreeItem = create_item()
 	
 	session_item.set_text(Columns.NAME, p_session.get_name())
 	session_item.set_text(Columns.NODES, str(p_session.get_number_of_nodes()))
-	session_item.set_text(Columns.SESSION_MASTER, p_session.get_session_master().get_node_name())
+	session_item.set_text(Columns.SESSION_MASTER, p_session.get_session_master().get_node_name() if p_session.has_session_master() else "NUL")
 	session_item.set_text(Columns.SESSION_ID, p_session.get_session_id())
 	
 	_sessions.map(p_session, session_item)
+	_session_master_connections.connect_object(p_session.get_session_master(), true)
+	_previous_session_masters[p_session] = p_session.get_session_master()
 
 
 ## Called when a node joines or leaves a session
@@ -52,13 +62,26 @@ func _on_node_joined_or_left(p_node: ConstellationNode, p_session: Constellation
 
 ## Called when the session master is changed
 func _on_session_master_changed(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
+	if _previous_session_masters[p_session]:
+		_session_master_connections.disconnect_object(_previous_session_masters[p_session], true)
+	
+	_session_master_connections.connect_object(p_node, true)
 	_sessions.left(p_session).set_text(Columns.SESSION_MASTER, p_node.get_node_name() if p_node else "NULL")
+	_previous_session_masters[p_session] = p_node
+
+
+## Called when the node name is changed on a session master
+func _on_session_master_node_name_changed(p_name: String, p_node: ConstellationNode) -> void:
+	_sessions.left(p_node.get_session()).set_text(Columns.SESSION_MASTER, p_name)
 
 
 ## Called when a session is to be deleted when all nodes disconnect
 func _on_session_request_delete(p_session: ConstellationSession) -> void:
 	_sessions.left(p_session).free()
 	_sessions.erase_left(p_session)
+	
+	_session_master_connections.disconnect_object(_previous_session_masters[p_session], true)
+	_previous_session_masters.erase(p_session)
 
 
 ## Called when the JoinSession Button is pressed

@@ -5,6 +5,9 @@ class_name ConstellationNode extends Node
 ## Class to repersent a node in the session
 
 
+## Emitted when the role flags change
+signal role_flags_changed(node_flags: int)
+
 ## Emitted when the connection state is changed
 signal connection_state_changed(connection_state: ConnectionState)
 
@@ -52,7 +55,8 @@ enum ConnectionState {
 ## Enum for node flags
 enum NodeFlags {
 	NONE				= 0,		## Default state
-	LOCAL_NODE			= 1 << 0,	## This node is a Local node
+	UNKNOWN				= 1 << 0,	## This node is a unknown node
+	LOCAL_NODE			= 2 << 0,	## This node is a Local node
 }
 
 
@@ -74,11 +78,11 @@ var _node_name: String = "UnNamed ConstellationNode"
 ## The IP address of the remote node
 var _node_ip: String = ""
 
-## Local node state
-var _is_local: bool = false
-
 ## Session master state
 var _is_session_master: bool = false
+
+## Unknown node state, node has not been found on the network yet
+var _is_unknown: bool = false
 
 ## The TCP port that the node is using
 var _node_tcp_port: int = 0
@@ -123,9 +127,19 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 static func create_local_node() -> ConstellationNode:
 	var node: ConstellationNode = ConstellationNode.new()
 	
-	node._is_local = true
 	node._connection_state = ConnectionState.CONNECTED
 	node._node_flags = NodeFlags.LOCAL_NODE
+	
+	return node
+
+
+## Creates an unknown node
+static func create_unknown_node(p_node_id: String) -> ConstellationNode:
+	var node: ConstellationNode = ConstellationNode.new()
+	
+	node._set_node_id(p_node_id)
+	node._mark_as_unknown(true)
+	node._set_node_name("UnknownNode")
 	
 	return node
 
@@ -171,36 +185,23 @@ func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int) -> ConstaNetHe
 
 ## Handles a message
 func handle_message(p_message: ConstaNetHeadder) -> void:
-	print(p_message.get_as_string())
 	match p_message.type:
 		MessageType.DISCOVERY:
-			_set_node_name(p_message.node_name)
-			
-			_last_seen = Time.get_unix_time_from_system()
-			last_seen_changed.emit(_last_seen)
-			
-			if p_message.tcp_port != _node_tcp_port:
-				_node_tcp_port = p_message.tcp_port
-				connect_tcp()
-			
-			if p_message.udp_port != _node_udp_port:
-				_node_udp_port = p_message.udp_port
-				_udp_socket.close()
-				_udp_socket.connect_to_host(_node_ip, _node_udp_port)
+			update_from_discovery(p_message)
 			
 			if _connection_state == ConnectionState.LOST_CONNECTION:
 				_set_connection_status(ConnectionState.DISCOVERED)
 		
 		MessageType.SESSION_ANNOUNCE:
 			if p_message.is_announcement() and p_message.nodes.has(_node_id):
-				_set_session(Network.get_session_from_id(p_message.session_id))
+				_set_session(Network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_JOIN:
 			var session: ConstellationSession = Network.get_session_from_id(p_message.session_id)
 			if session == Network.get_local_node().get_session():
 				connect_tcp()
 			
-			_set_session(Network.get_session_from_id(p_message.session_id))
+			_set_session(Network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_LEAVE:
 			var session: ConstellationSession = Network.get_session_from_id(p_message.session_id)
@@ -220,6 +221,29 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 					if is_local():
 						var session: ConstellationSession = Network.get_session_from_id(p_message.value)
 						Network.join_session(session) if session else Network.leave_session() 
+
+
+## Updates this nodes info from a discovery packet
+func update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
+	_set_node_name(p_discovery.node_name)
+	_set_role_flags(p_discovery.role_flags)
+	
+	_last_seen = Time.get_unix_time_from_system()
+	last_seen_changed.emit(_last_seen)
+	
+	var force_reconnect: bool = false
+	if p_discovery.node_ip != _node_ip:
+		_set_node_ip(p_discovery.node_ip)
+		force_reconnect = true
+	
+	if p_discovery.tcp_port != _node_tcp_port or force_reconnect:
+		_node_tcp_port = p_discovery.tcp_port
+		connect_tcp()
+	
+	if p_discovery.udp_port != _node_udp_port or force_reconnect:
+		_node_udp_port = p_discovery.udp_port
+		_udp_socket.close()
+		_udp_socket.connect_to_host(_node_ip, _node_udp_port)
 
 
 ## Sends a message via UDP to the remote node
@@ -340,7 +364,12 @@ func get_last_seen_time() -> float:
 ## Returns True if this node is local
 func is_local() -> bool:
 	return _node_flags & NodeFlags.LOCAL_NODE
- 
+
+
+## Returns true if this node is unknown
+func is_unknown() -> bool:
+	return _node_flags & NodeFlags.UNKNOWN
+
 
 ## Returns true if this RoleFlag includes the EXECUTOR role
 func is_executor() -> bool:
@@ -376,6 +405,8 @@ func _set_role_flags(p_role_flags: int) -> bool:
 		return false
 	
 	_role_flags = p_role_flags
+	role_flags_changed.emit(_role_flags)
+	
 	return true
 
 
@@ -429,10 +460,20 @@ func _set_session(p_session: ConstellationSession) -> bool:
 	_session = p_session
 	session_joined.emit(_session)
 	
-	_remove_session_master_mark()
 	_session._add_node(self)
 	
 	return true
+
+
+## Sets the nodes session, with out joining the session unlike _set_session
+func _set_session_no_join(p_session: ConstellationSession) -> void:
+	_session = p_session
+	_remove_session_master_mark()
+	
+	if p_session:
+		session_joined.emit(p_session)
+	else:
+		session_left.emit()
 
 
 ## Leaves the current session
@@ -457,3 +498,11 @@ func _mark_as_session_master() -> void:
 func _remove_session_master_mark() -> void:
 	_is_session_master = false
 	is_now_longer_session_master.emit()
+
+
+## Marks or unmarks this node as unknown
+func _mark_as_unknown(p_unknown: bool) -> void:
+	if p_unknown:
+		_node_flags |= NodeFlags.UNKNOWN
+	else:
+		_node_flags &= ~NodeFlags.UNKNOWN

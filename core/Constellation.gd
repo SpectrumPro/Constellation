@@ -36,6 +36,9 @@ const DISCO_TIMEOUT: int = 10
 ## Time in seconds for a node to be considred lost if it does not send a disco message
 const DISCO_DISCONNECT_TIME: int = 12
 
+## Wait time in seconds for a responce from from a disco broadcast
+const DISCO_WAIT_TIME: int = 1
+
 ## Wait time in seconds for a responce from the relay server
 const RELAY_WAIT_TIME: int = 1
 
@@ -94,11 +97,17 @@ var _local_node: ConstellationNode = ConstellationNode.create_local_node()
 ## All known network session
 var _known_sessions: Dictionary[String, ConstellationSession]
 
+## All Unknown sessions
+var _unknown_sessions: Dictionary[String, ConstellationSession]
+
 ## Timer for node discovery
 var _disco_timer: Timer = Timer.new()
 
 ## Stores all known devices by thier NodeID
 var _known_nodes: Dictionary[String, ConstellationNode] = {}
+
+## Stores all unknown nodes yet to be found on the network
+var _unknown_nodes: Dictionary[String, ConstellationNode]
 
 
 ## Init
@@ -161,21 +170,49 @@ func get_node_id() -> String:
 
 
 ## Returns the a session from the Id, or NULL
-func get_session_from_id(p_session_id: String) -> ConstellationSession:
+func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -> ConstellationSession:
+	if _known_sessions.has(p_session_id):
+		return _known_sessions[p_session_id]
+	
+	elif p_create_unknown:
+		if _unknown_sessions.has(p_session_id):
+			return _unknown_sessions[p_session_id]
+		
+		var session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
+		
+		_unknown_sessions[p_session_id] = session
+		print("Creating unknown session: ", session.get_session_id())
+		
+		return session
+	
 	return _known_sessions.get(p_session_id)
 
 
 ## Gets a Node from its NodeID
-func get_node_from_id(p_node_id: String) -> ConstellationNode:
-	return _known_nodes.get(p_node_id)
+func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> ConstellationNode:
+	if _known_nodes.has(p_node_id):
+		return _known_nodes[p_node_id]
+	
+	elif p_create_unknown:
+		if _unknown_nodes.has(p_node_id):
+			return _unknown_nodes[p_node_id]
+		
+		var unknown_node: ConstellationNode = ConstellationNode.create_unknown_node(p_node_id)
+		
+		_unknown_nodes[p_node_id] = unknown_node
+		print("Creating unknown node: ", unknown_node.get_node_id())
+		
+		return unknown_node
+	
+	return null
 
 
 ## Gets all the nodes as an Array of ConstellationNode
-func get_node_array(p_from: ConstaNetSessionAnnounce) -> Array[ConstellationNode]:
+func get_node_array(p_from: ConstaNetSessionAnnounce, p_create_unknown: bool = false) -> Array[ConstellationNode]:
 	var typed_array: Array[ConstellationNode]
 	
 	for node_id: String in p_from.nodes:
-		var node: ConstellationNode = Network.get_node_from_id(node_id)
+		var node: ConstellationNode = Network.get_node_from_id(node_id, p_create_unknown)
 		
 		if node not in typed_array:
 			typed_array.append(node)
@@ -231,10 +268,12 @@ func stop_node() -> void:
 	for session: ConstellationSession in _known_sessions.values():
 		session.close()
 	
-	_local_node._set_session(null)
+	_local_node._set_session_no_join(null)
 	
 	_known_nodes.clear()
 	_known_sessions.clear()
+	_unknown_nodes.clear()
+	_unknown_sessions.clear()
 	
 	_found_relay_server = false
 	_disco_timer.stop()
@@ -279,10 +318,7 @@ func send_message_broadcast(p_message: ConstaNetHeadder) -> Error:
 
 
 ## Sends a discovery message to broadcasr
-func send_discovery(p_flags = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
-	if not _udp_socket.is_bound():
-		return ERR_CONNECTION_ERROR
-	
+func send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
 	var packet: ConstaNetDiscovery = ConstaNetDiscovery.new()
 	
 	packet.origin_id = get_node_id()
@@ -299,6 +335,30 @@ func send_discovery(p_flags = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
 	return send_message_broadcast(packet)
 
 
+## Sends a session discovery message to broadcast
+func send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST) -> Error:
+	var message: ConstaNetSessionDiscovery = ConstaNetSessionDiscovery.new()
+	
+	message.origin_id = get_node_id()
+	message.flags = p_flags
+	
+	return send_message_broadcast(message)
+
+
+## Sends a sessions anouncement message
+func send_session_anouncement(p_session: ConstellationSession, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
+	var message: ConstaNetSessionAnnounce = ConstaNetSessionAnnounce.new()
+	
+	message.origin_id = get_node_id()
+	message.session_master = get_node_id()
+	message.session_id = p_session.get_session_id()
+	message.session_name = p_session.get_name()
+	message.nodes = [get_node_id()]
+	message.flags = p_flags
+	
+	return send_message_broadcast(message)
+
+
 ## Starts the discovery stage
 func begin_discovery() -> void:
 	_disco_timer.wait_time = DISCO_TIMEOUT
@@ -309,6 +369,7 @@ func begin_discovery() -> void:
 		add_child(_disco_timer)
 	
 	send_discovery(ConstaNetHeadder.Flags.REQUEST)
+	send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
 ## Find and connects to a RelayServer, or launches a new one
@@ -386,12 +447,12 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 	
 	match p_message.type:
 		MessageType.DISCOVERY:
-			if p_message.origin_id not in _known_nodes:
-				var node: ConstellationNode = ConstellationNode.create_from_discovery(p_message)
-				
-				_known_nodes[p_message.origin_id] = node
-				add_child(node)
-				node_found.emit(node)
+			handle_discovery_message(p_message)
+		
+		MessageType.SESSION_DISCOVERY:
+			for p_session: ConstellationSession in _known_sessions.values():
+				if p_session.get_session_master() == _local_node:
+					send_session_anouncement(p_session, ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 		
 		MessageType.SESSION_ANNOUNCE:
 			handle_session_announce_message(p_message)
@@ -417,13 +478,45 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 		_known_nodes[p_message.origin_id].handle_message(p_message)
 
 
+## Handles a discovery message
+func handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
+	if p_discovery.origin_id not in _known_nodes:
+		var node: ConstellationNode
+		if p_discovery.origin_id in _unknown_nodes:
+			node = _unknown_nodes[p_discovery.origin_id]
+			node._mark_as_unknown(false)
+			node.update_from_discovery(p_discovery)
+			
+			_unknown_nodes.erase(p_discovery.origin_id)
+			print("Using unknown node: ", node.get_node_id())
+			
+		
+		else:
+			node = ConstellationNode.create_from_discovery(p_discovery)
+			
+		_known_nodes[p_discovery.origin_id] = node
+		add_child(node)
+		node_found.emit(node)
+
+
 ## Handles a session announce message
 func handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> void:
 	if _known_sessions.has(p_message.session_id):
 		_known_sessions[p_message.session_id].update_with(p_message)
 	
 	else:
-		var session: ConstellationSession = ConstellationSession.create_from_session_announce(p_message)
+		var session: ConstellationSession
+		
+		if _unknown_sessions.has(p_message.session_id):
+			session = _unknown_sessions[p_message.session_id]
+			session._mark_as_unknown(false)
+			session.update_with(p_message)
+			
+			_unknown_sessions.erase(p_message.session_id)
+			print("Using unknown session: ", session.get_session_id())
+		
+		else:
+			session = ConstellationSession.create_from_session_announce(p_message)
 		
 		_known_sessions[session.get_session_id()] = session
 		session.request_delete.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
@@ -433,29 +526,20 @@ func handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> voi
 
 ## Creates and joins a new session
 func create_session(p_name: String) -> ConstellationSession:
-	if not p_name:
+	if not p_name or _network_state != NetworkState.READY:
 		return null
 	
 	var session: ConstellationSession = ConstellationSession.new()
-	var message: ConstaNetSessionAnnounce = ConstaNetSessionAnnounce.new()
 	
-	message.origin_id = get_node_id()
-	message.session_master = get_node_id()
-	message.session_id = session.get_session_id()
-	message.session_name = p_name
-	message.nodes = [get_node_id()]
-	message.set_announcement(true)
-	
+	session._set_name(p_name)
 	session._set_session_master(_local_node)
 	session._add_node(_local_node)
-	session._set_name(p_name)
 	
-	_local_node._set_session(session)
 	_known_sessions[session.get_session_id()] = session
 	session.request_delete.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
 	session_created.emit(session)
 	
-	send_message_broadcast(message)
+	send_session_anouncement(session)
 	return session
 
 

@@ -20,6 +20,7 @@ enum Type {
 	HEARTBEAT,				# Periodic alive signal
 	
 	SESSION_ANNOUNCE,		# Announces a new session
+	SESSION_DISCOVERY,		# Requests network nodes to anounce sessions
 	SESSION_JOIN,			# New node joining a session
 	SESSION_LEAVE,			# Node leaving a session
 	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
@@ -52,6 +53,7 @@ static var ClassTypes: Dictionary[int, Script] = {
 	Type.DISCOVERY: ConstaNetDiscovery,
 	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
 	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
+	Type.SESSION_DISCOVERY: ConstaNetSessionDiscovery,
 	Type.SESSION_JOIN: ConstaNetSessionJoin,
 	Type.SESSION_LEAVE: ConstaNetSessionLeave,
 	Type.SESSION_SET_PRIORITY: ConstaNetSessionSetPriority,

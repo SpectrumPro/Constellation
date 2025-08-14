@@ -18,7 +18,7 @@ var _local_node: ConstellationNode = Network.get_local_node()
 var _command: ConstaNetCommand = _local_node.auto_fill_headder(ConstaNetCommand.new(), ConstaNetHeadder.Flags.REQUEST)
 
 
-func _ready() -> void:	
+func _ready() -> void:
 	_local_node.is_now_session_master.connect(_on_local_node_is_session_master)
 	_local_node.is_now_longer_session_master.connect(_on_local_node_is_no_longer_session_master)
 	_local_node.session_left.connect(_local_node_session_left)
@@ -31,32 +31,33 @@ func _ready() -> void:
 
 
 ## Process
-func _process(delta: float) -> void:
+func _process_step() -> void:
 	#_color.h += _step * delta
 	#color_rect.color = _color
 	#
 	#_command.command = _color
 	
-	color_rect.position.x = wrap(color_rect.position.x + _step, 0, size.x)
+	color_rect.position.x = wrap(color_rect.position.x + (_step / 4), 0, size.x)
 	_command.command = color_rect.position.x
 	
+	#print(_local_node.get_node_name(), " Is Sending: ", _command.command)
 	_local_node.get_session().send_pre_existing_command(_command, ConstellationSession.NodeFilter.ALL_OTHER_NODES)
 
 
 ## Called when the local node becomes the session master
 func _on_local_node_is_session_master() -> void:
-	set_process(true)
+	$Timer.start()
 
 
 ## Called when the local node is no longer the session master
 func _on_local_node_is_no_longer_session_master() -> void:
-	set_process(false)
+	$Timer.stop()
 
 
 ## Called when the local node leaves a session
 func _local_node_session_left() -> void:
-	set_process(false)
-	color_rect.color = Color.BLACK
+	$Timer.stop()
+	color_rect.position.x = 0
 
 
 ## Called when the local nodes recieves a command

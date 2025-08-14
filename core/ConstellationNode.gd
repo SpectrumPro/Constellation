@@ -11,6 +11,9 @@ signal role_flags_changed(node_flags: int)
 ## Emitted when the connection state is changed
 signal connection_state_changed(connection_state: ConnectionState)
 
+## Emitted when a command is recieved, only emitted on the local node
+signal command_recieved(command: ConstaNetCommand)
+
 ## Emitted when the name of the node is changed
 signal node_name_changed(node_name: String)
 
@@ -23,14 +26,15 @@ signal session_joined(session: ConstellationSession)
 ## Emitted when the node leaves the current session
 signal session_left()
 
+## Emitted if this node becomes the master of its session
+signal is_now_session_master()
+
+## Emitted if this node is no longer the master of its session
+signal is_now_longer_session_master()
+
 ## Emitted when the last seen time is changed, IE the node was just seen
 signal last_seen_changed(last_seen: float)
 
-## Emitted if this node becomes the master of its session
-signal is_now_session_master
-
-## Emitted if this node is no longer the master of its session
-signal is_now_longer_session_master
 
 
 ## MessageType
@@ -167,7 +171,7 @@ func _process(delta: float) -> void:
 				_set_connection_status(ConnectionState.LOST_CONNECTION)
 	
 	if status == StreamPeerTCP.STATUS_CONNECTED and _tcp_socket.get_available_bytes():
-		var data: Array = _tcp_socket.get_partial_data(_tcp_socket.get_available_bytes())
+		var data: Array = _tcp_socket.get_data(_tcp_socket.get_available_bytes())
 		var packet: PackedByteArray = data[1]
 		
 		Network.handle_packet(packet)
@@ -227,7 +231,15 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 				ConstaNetSetAttribute.Attribute.SESSION:
 					if is_local():
 						var session: ConstellationSession = Network.get_session_from_id(p_message.value)
-						Network.join_session(session) if session else Network.leave_session() 
+						Network.join_session(session) if session else Network.leave_session()
+		
+		MessageType.COMMAND:
+			p_message = p_message as ConstaNetCommand
+			
+			if p_message.in_session and p_message.in_session != get_session_id():
+				return
+			
+			command_recieved.emit(p_message)
 
 
 ## Updates this nodes info from a discovery packet
@@ -256,9 +268,20 @@ func update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 
 
 ## Sends a message via UDP to the remote node
-func send_message_udp(p_message: ConstaNetHeadder) -> void:
+func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 	if _udp_socket.is_socket_connected():
-		_udp_socket.put_packet(p_message.get_as_string().to_utf8_buffer())
+		var errcode: Error = _udp_socket.put_packet(p_message.get_as_string().to_utf8_buffer())
+		return errcode
+	
+	return ERR_CONNECTION_ERROR
+
+
+## Sends a message over TCP to the remote node
+func send_message_tcp(p_message: ConstaNetHeadder) -> Error:
+	if _tcp_socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+		return _tcp_socket.put_data(p_message.get_as_packet())
+	
+	return ERR_CONNECTION_ERROR
 
 
 ## Connectes TCP to this node
@@ -267,7 +290,11 @@ func connect_tcp() -> Error:
 		return ERR_UNAVAILABLE
 	
 	disconnect_tcp()
-	return _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
+	
+	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
+	_tcp_socket.set_no_delay(true)
+	
+	return err_code
 
 
 ## Disconnects TCP from this node
@@ -467,9 +494,9 @@ func _set_session(p_session: ConstellationSession) -> bool:
 		return false
 	
 	_session = p_session
-	session_joined.emit(_session)
 	
 	_session._add_node(self)
+	session_joined.emit(_session)
 	
 	return true
 

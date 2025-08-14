@@ -53,6 +53,7 @@ static var ClassTypes: Dictionary[int, Script] = {
 	Type.UNKNOWN: ConstaNetHeadder,
 	Type.DISCOVERY: ConstaNetDiscovery,
 	Type.GOODBYE: ConstaNetGoodbye,
+	Type.COMMAND: ConstaNetCommand,
 	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
 	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
 	Type.SESSION_DISCOVERY: ConstaNetSessionDiscovery,
@@ -184,7 +185,7 @@ static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	var p_target_id: String = type_convert(p_dict.get("target_id", ""), TYPE_STRING)
 	
 	if p_type not in ClassTypes:
-		return null
+		return ConstaNetHeadder.new()
 	
 	message = ClassTypes[p_type].new()
 	message._origin_version = p_origin_version

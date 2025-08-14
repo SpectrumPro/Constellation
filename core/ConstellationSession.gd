@@ -27,6 +27,15 @@ enum SessionFlags {
 	UNKNOWN				= 1 << 0,	## This node is a unknown sessuin
 }
 
+## Enum for the node filter
+enum NodeFilter {
+	NONE,				## Default State
+	MASTER,				## Send only to the session master
+	ALL_NODES,			## Send to all nodes
+	ALL_OTHER_NODES,	## Send to all nodes, expect the session master
+	MANUAL,				## Manualy specify a list of nodes to send to
+}
+
 
 ## All nodes in this session
 var _nodes: Array[ConstellationNode]
@@ -187,6 +196,53 @@ func close() -> void:
 	_nodes.clear()
 
 
+## Sends a command to the session, using p_node_filter as the NodeFilter
+func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.MASTER) -> Error:
+	var message: ConstaNetCommand = ConstaNetCommand.new()
+	
+	message.command = p_command
+	message.data_type = typeof(p_command)
+	
+	return send_pre_existing_command(message, p_node_filter)
+
+
+## Sends a pre-existing ConstaNetCommand message to the session
+func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.MASTER) -> Error:
+	var local_node: ConstellationNode = Network.get_local_node()
+	p_command.in_session = _session_id
+	
+	match p_node_filter:
+		NodeFilter.MASTER:
+			if _session_master == local_node:
+				local_node.handle_message(p_command)
+				return OK
+			
+			else:
+				p_command.target_id = _session_master.get_node_id()
+				return _session_master.send_message_udp(p_command)
+			
+		NodeFilter.ALL_NODES:
+			for node: ConstellationNode in _nodes:
+				p_command.target_id = node.get_node_id()
+				node.send_message_udp(p_command)
+			
+			return OK
+			
+		
+		NodeFilter.ALL_OTHER_NODES:
+			for node: ConstellationNode in _nodes:
+				if node == local_node:
+					continue
+				
+				p_command.target_id = node.get_node_id()
+				node.send_message_udp(p_command)
+				
+			return OK
+		
+		_:
+			return ERR_INVALID_PARAMETER
+
+
 ## Sets the SessionID
 func _set_session_id(p_session_id: String) -> bool:
 	if p_session_id == _session_id:
@@ -208,8 +264,9 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	
 	if _session_master:
 		_session_master._mark_as_session_master()
-	
+		
 	master_changed.emit(_session_master)
+	
 	return true
 
 

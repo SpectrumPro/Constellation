@@ -208,8 +208,8 @@ func _on_set_session_option_session_selected(p_session: ConstellationSession) ->
 
 ## Called when the breakppoint button is pressed
 func _on_breakpoint_pressed() -> void:
-	#OS.crash("")
-	breakpoint
+	OS.crash("")
+	#breakpoint
 
 
 ## Called when the networtk state switch is toggled

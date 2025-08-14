@@ -46,6 +46,7 @@ const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 ## State Enum for remote node
 enum ConnectionState {
 	UNKNOWN,			## No state assigned yet
+	OFFLINE,			## Node is offline
 	DISCOVERED,			## Node was found via discovery
 	CONNECTING,			## Attempting to establish connection
 	CONNECTED,			## Successfully connected and active
@@ -149,7 +150,7 @@ func _process(delta: float) -> void:
 	_tcp_socket.poll()
 	
 	var status: StreamPeerTCP.Status = _tcp_socket.get_status()
-	if status != _tcp_previous_status:
+	if status != _tcp_previous_status and _connection_state != ConnectionState.OFFLINE:
 		_tcp_previous_status = status
 		
 		match status:
@@ -189,8 +190,14 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 		MessageType.DISCOVERY:
 			update_from_discovery(p_message)
 			
-			if _connection_state == ConnectionState.LOST_CONNECTION:
+			if _connection_state in [ConnectionState.UNKNOWN, ConnectionState.OFFLINE, ConnectionState.LOST_CONNECTION]:
 				_set_connection_status(ConnectionState.DISCOVERED)
+		
+		MessageType.GOODBYE:
+			_leave_session()
+			disconnect_tcp()
+			_udp_socket.close()
+			_set_connection_status(ConnectionState.OFFLINE)
 		
 		MessageType.SESSION_ANNOUNCE:
 			if p_message.is_announcement() and p_message.nodes.has(_node_id):
@@ -238,7 +245,9 @@ func update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	
 	if p_discovery.tcp_port != _node_tcp_port or force_reconnect:
 		_node_tcp_port = p_discovery.tcp_port
-		connect_tcp()
+		
+		if _connection_state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
+			connect_tcp()
 	
 	if p_discovery.udp_port != _node_udp_port or force_reconnect:
 		_node_udp_port = p_discovery.udp_port

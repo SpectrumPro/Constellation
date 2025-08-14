@@ -181,7 +181,7 @@ func close() -> void:
 	
 	for node: ConstellationNode in _nodes.duplicate():
 		_remove_node(node)
-		_node_connections.disconnect_object(node)
+		_node_connections.disconnect_object(node, true)
 	
 	_priority_order.clear()
 	_nodes.clear()

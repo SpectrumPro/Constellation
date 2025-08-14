@@ -13,6 +13,7 @@ enum Type {
 	UNKNOWN, 				# Init base state
 	
 	DISCOVERY,				# Client/server broadcasts "Who’s there?"
+	GOODBYE,				# Node going offline
 	COMMAND,				# Lighting cue or control command
 	
 	SET_ATTRIBUTE,			# Sets an attribute on a node, name, ipaddress, ect..
@@ -51,6 +52,7 @@ enum RoleFlags {
 static var ClassTypes: Dictionary[int, Script] = {
 	Type.UNKNOWN: ConstaNetHeadder,
 	Type.DISCOVERY: ConstaNetDiscovery,
+	Type.GOODBYE: ConstaNetGoodbye,
 	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
 	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
 	Type.SESSION_DISCOVERY: ConstaNetSessionDiscovery,

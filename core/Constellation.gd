@@ -54,6 +54,9 @@ const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
 ## NetworkRole
 const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 
+## ConstaNetGoodbye reason for going offline
+const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
+
 
 ## The primary TCP server to use
 var _tcp_socket: TCPServer = TCPServer.new()
@@ -225,7 +228,7 @@ func start_node() -> void:
 	if _network_state != NetworkState.OFFLINE:
 		return
 	
-	stop_node()
+	stop_node(true)
 	_set_network_state(NetworkState.INITIALIZING)
 	_known_nodes[get_node_id()] = _local_node
 	
@@ -254,7 +257,10 @@ func start_node() -> void:
 
 
 ## Stops the node
-func stop_node() -> void:
+func stop_node(p_internal_only: bool = false) -> void:
+	if not p_internal_only:
+		send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
+	
 	_tcp_socket.stop()
 	_udp_socket.close()
 	_relay_tcp_stream.disconnect_from_host()
@@ -355,6 +361,17 @@ func send_session_anouncement(p_session: ConstellationSession, p_flags: int = Co
 	message.session_name = p_session.get_name()
 	message.nodes = [get_node_id()]
 	message.flags = p_flags
+	
+	return send_message_broadcast(message)
+
+
+## Sends a goodbye message
+func send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
+	var message: ConstaNetGoodbye = ConstaNetGoodbye.new()
+	
+	message.origin_id = get_node_id()
+	message.flags = p_flags
+	message.reason = p_reason
 	
 	return send_message_broadcast(message)
 

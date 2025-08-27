@@ -24,7 +24,7 @@ signal request_delete()
 ## Enum for session flags
 enum SessionFlags {
 	NONE				= 0,		## Default state
-	UNKNOWN				= 1 << 0,	## This node is a unknown sessuin
+	UNKNOWN				= 1 << 0,	## This node is a unknown session
 }
 
 ## Enum for the node filter

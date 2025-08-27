@@ -25,7 +25,7 @@ const BROADCAST_RELAY_ALLOWED_HOSTS: Array[String] = ["linux", "macos", "windows
 const UDP_BROADCAST_PORT: int = 3823
 
 ## Network broadcast address
-const NETWORK_BROADCAST: String = "255.255.255.255"
+const NETWORK_BROADCAST: String = "192.168.1.255"
 
 ## Network loopback address
 const NETWORK_LOOPBACK: String = "127.0.0.1"

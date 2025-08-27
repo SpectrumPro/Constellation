@@ -39,6 +39,7 @@ var _peers: Array[StreamPeerTCP]
 ## Debug brick state
 var _is_bricked: bool = false
 
+
 ## Init 
 func _initialize():
 	print("RelayServer: Initializing")
@@ -52,7 +53,7 @@ func _initialize():
 		OS.kill(OS.get_process_id())
 	
 	var udp_error: Error = _udp_peer.bind(UDP_BROADCAST_PORT)
-	if tcp_error:
+	if udp_error:
 		print("RelayServer: UDP bind error: ", error_string(udp_error))
 		return
 	

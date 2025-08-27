@@ -1,39 +1,18 @@
 # Copyright (c) 2025 Liam Sherwin, All rights reserved.
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
-class_name ConstellationNode extends Node
+class_name ConstellationNode extends NetworkNode
 ## Class to repersent a node in the session
 
 
 ## Emitted when the role flags change
 signal role_flags_changed(node_flags: int)
 
-## Emitted when the connection state is changed
-signal connection_state_changed(connection_state: ConnectionState)
-
 ## Emitted when a command is recieved, only emitted on the local node
 signal command_recieved(command: ConstaNetCommand)
 
-## Emitted when the name of the node is changed
-signal node_name_changed(node_name: String)
-
 ## Emitted when the IP address of the remote node is changed
 signal node_ip_changed(ip: String)
-
-## Emitted when the Node joins a session
-signal session_joined(session: ConstellationSession)
-
-## Emitted when the node leaves the current session
-signal session_left()
-
-## Emitted if this node becomes the master of its session
-signal is_now_session_master()
-
-## Emitted if this node is no longer the master of its session
-signal is_now_longer_session_master()
-
-## Emitted when the last seen time is changed, IE the node was just seen
-signal last_seen_changed(last_seen: float)
 
 
 
@@ -46,60 +25,20 @@ const Flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags
 ## NetworkRole
 const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 
-
-## State Enum for remote node
-enum ConnectionState {
-	UNKNOWN,			## No state assigned yet
-	OFFLINE,			## Node is offline
-	DISCOVERED,			## Node was found via discovery
-	CONNECTING,			## Attempting to establish connection
-	CONNECTED,			## Successfully connected and active
-	LOST_CONNECTION,	## Node timed out or disconnected unexpectedly
-}
-
-## Enum for node flags
-enum NodeFlags {
-	NONE				= 0,		## Default state
-	UNKNOWN				= 1 << 0,	## This node is a unknown node
-	LOCAL_NODE			= 2 << 0,	## This node is a Local node
-}
-
-
-## Current state of the remote node local connection
-var _connection_state: ConnectionState = ConnectionState.UNKNOWN
-
-## Node Flags
-var _node_flags: int = NodeFlags.NONE
-
 ## Current Network role
 var _role_flags: int = RoleFlags.EXECUTOR
 
 ## The NodeID of the remote node
 var _node_id: String = UUID_Util.v4()
 
-## The Name of the remote node
-var _node_name: String = "UnNamed ConstellationNode"
-
 ## The IP address of the remote node
 var _node_ip: String = ""
-
-## Session master state
-var _is_session_master: bool = false
-
-## Unknown node state, node has not been found on the network yet
-var _is_unknown: bool = false
 
 ## The TCP port that the node is using
 var _node_tcp_port: int = 0
 
 ## The UDP port that the node is using
 var _node_udp_port: int = 0
-
-## The Session
-var _session: ConstellationSession
-
-## UNIX timestamp of the last time this node was seen on the network
-var _last_seen: float = 0
 
 ## UDP peer to send data to this node
 var _udp_socket: PacketPeerUDP = PacketPeerUDP.new()
@@ -311,7 +250,7 @@ func close() -> void:
 
 
 ## Joins the given session
-func join_session(p_session: ConstellationSession) -> bool:
+func join_session(p_session: NetworkSession) -> bool:
 	if not p_session:
 		return false
 	
@@ -377,11 +316,6 @@ func get_node_name() -> String:
 ## Gets the Node's IP Address
 func get_node_ip() -> String:
 	return _node_ip
-
-
-## Gets the Node's Session
-func get_session() -> ConstellationSession:
-	return _session
 
 
 ## Gets the current session ID, or ""

@@ -63,7 +63,7 @@ func _ready() -> void:
 		_add_node(node)
 	
 	Network.node_found.connect(_add_node)
-	Network.network_state_changed.connect(func (p_state: Network.NetworkState):
+	Network.network_state_changed.connect(func (p_state: Network.NetworkState, p_err: Error):
 		_network_state_label.text = Network.NetworkState.keys()[p_state]
 		
 		if p_state == Network.NetworkState.OFFLINE:

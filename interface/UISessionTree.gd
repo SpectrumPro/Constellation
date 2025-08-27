@@ -45,7 +45,7 @@ func _on_session_created(p_session: ConstellationSession) -> void:
 	Utils.connect_signals_with_bind(_session_connections, p_session)
 	var session_item: TreeItem = create_item()
 	
-	session_item.set_text(Columns.NAME, p_session.get_name())
+	session_item.set_text(Columns.NAME, p_session.get_session_name())
 	session_item.set_text(Columns.NODES, str(p_session.get_number_of_nodes()))
 	session_item.set_text(Columns.SESSION_MASTER, p_session.get_session_master().get_node_name() if p_session.has_session_master() else "NUL")
 	session_item.set_text(Columns.SESSION_ID, p_session.get_session_id())

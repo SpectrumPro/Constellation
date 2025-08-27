@@ -33,7 +33,7 @@ func _on_session_created(p_session: ConstellationSession) -> void:
 	var index: int = selected
 	
 	_sessions.append(p_session)
-	add_item(p_session.get_name(), _sessions.find(p_session))
+	add_item(p_session.get_session_name(), _sessions.find(p_session))
 	
 	select(index)
 

@@ -1,40 +1,8 @@
 # Copyright (c) 2025 Liam Sherwin, All rights reserved.
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
-class_name ConstellationSession extends RefCounted
+class_name ConstellationSession extends NetworkSession
 ## Class to repersent a session
-
-
-## Emitted when a node joins the session
-signal node_joined(node: ConstellationNode)
-
-## Emitted when a node leaves the session
-signal node_left(node: ConstellationNode)
-
-## Emitted when the session master is changes
-signal master_changed(node: ConstellationNode)
-
-## Emitted when the priority order of a node is changed
-signal priority_changed(node: ConstellationNode, position: int)
-
-## Emited when this session is to be deleted after all nodes disconnect
-signal request_delete()
-
-
-## Enum for session flags
-enum SessionFlags {
-	NONE				= 0,		## Default state
-	UNKNOWN				= 1 << 0,	## This node is a unknown session
-}
-
-## Enum for the node filter
-enum NodeFilter {
-	NONE,				## Default State
-	MASTER,				## Send only to the session master
-	ALL_NODES,			## Send to all nodes
-	ALL_OTHER_NODES,	## Send to all nodes, expect the session master
-	MANUAL,				## Manualy specify a list of nodes to send to
-}
 
 
 ## All nodes in this session
@@ -43,18 +11,8 @@ var _nodes: Array[ConstellationNode]
 ## The SessionID of this session
 var _session_id: String = UUID_Util.v4()
 
-## The current SessionMaster
-var _session_master: ConstellationNode
-
-
 ## Priority order
 var _priority_order: Array[ConstellationNode]
-
-## The name of this session
-var _name: String = "UnNamed ConstellationSession"
-
-## Session Flags
-var _session_flags: int = SessionFlags.NONE
 
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
@@ -72,7 +30,6 @@ static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) ->
 	for node_id: String in p_message.nodes:
 		var node: ConstellationNode = Network.get_node_from_id(node_id, true)
 		if node:
-			prints("Adding node: ", node.get_node_name())
 			session._add_node(node)
 	
 	return session
@@ -102,7 +59,7 @@ func update_with(p_message: ConstaNetSessionAnnounce) -> bool:
 
 
 ## Sets the position of a node in the priority order
-func set_priority_order(p_node: ConstellationNode, p_position: int) -> bool:
+func set_priority_order(p_node: NetworkNode, p_position: int) -> bool:
 	if p_node not in _nodes:
 		return false
 	
@@ -124,7 +81,7 @@ func set_priority_order(p_node: ConstellationNode, p_position: int) -> bool:
 
 
 ## Sets the session master
-func set_master(p_node: ConstellationNode) -> bool:
+func set_master(p_node: NetworkNode) -> bool:
 	if not _set_session_master(p_node):
 		return false
 	
@@ -140,8 +97,11 @@ func set_master(p_node: ConstellationNode) -> bool:
 
 
 ## Gets all nodes in this session
-func get_nodes() -> Array[ConstellationNode]:
-	return _nodes.duplicate()
+func get_nodes() -> Array[NetworkNode]:
+	var return_value: Array[NetworkNode]
+	return_value.assign(_nodes)
+	
+	return return_value
 
 
 ## Shorthand to get the number of nodes in this session
@@ -160,18 +120,17 @@ func get_session_master() -> ConstellationNode:
 
 
 ## Returns the priority order
-func get_priority_order() -> Array[ConstellationNode]:
-	return _priority_order.duplicate()
+func get_priority_order() -> Array[NetworkNode]:
+	var return_value: Array[NetworkNode]
+	return_value.assign(_priority_order)
+	
+	return return_value
 
 
 ## Returns the priority order
-func get_priority_of(p_node: ConstellationNode) -> int:
+func get_priority_of(p_node: NetworkNode) -> int:
 	return _priority_order.find(p_node)
 
-
-## Gets the session name
-func get_name() -> String:
-	return _name
 
 
 ## Gets the session flags
@@ -271,15 +230,6 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	return true
 
 
-## Sets the SessionName
-func _set_name(p_name: String) -> bool:
-	if p_name == _name:
-		return false
-	
-	_name = p_name
-	return true
-
-
 ## Sets the node array, and emits signals
 func _set_node_array(p_node_array: Array[ConstellationNode]) -> void:
 	var new_nodes: Array[ConstellationNode] = p_node_array.duplicate()
@@ -350,14 +300,6 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 		node_left.emit(p_node)
 	
 	return true
-
-
-## Marks or unmarks this node as unknown
-func _mark_as_unknown(p_unknown: bool) -> void:
-	if p_unknown:
-		_session_flags |= SessionFlags.UNKNOWN
-	else:
-		_session_flags &= ~SessionFlags.UNKNOWN
 
 
 ## Called when the ConnectionState changes on any node in this session

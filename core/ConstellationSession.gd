@@ -210,6 +210,7 @@ func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.MAS
 func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.MASTER) -> Error:
 	var local_node: ConstellationNode = Network.get_local_node()
 	p_command.in_session = _session_id
+	p_command.origin_id = local_node.get_node_id()
 	
 	match p_node_filter:
 		NodeFilter.MASTER:

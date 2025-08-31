@@ -45,6 +45,37 @@ const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
 
 
+## ConstellationConfig object
+class ConstellationConfig extends Object:
+	## Disables the colorfull start up logo and copyright headder
+	static var disable_startup_details: bool = false
+	
+	## Defines a custom callable to call when logging infomation
+	static var custom_loging_method: Callable = Callable()
+	
+	## Defines a custom callable to call when logging infomation verbosely
+	static var custom_loging_method_verbose: Callable = Callable()
+	
+	## A String prefix to print before all message logs
+	static var log_prefix: String = ""
+	
+	## Loads config from a file
+	static func load_config(p_path: String) -> bool:
+		var script: Variant = load(p_path)
+		
+		if script is not GDScript or script.get("config") is not Dictionary:
+			return false
+		
+		var config: Dictionary = script.get("config")
+		
+		disable_startup_details = type_convert(config.get("disable_startup_details", disable_startup_details), TYPE_BOOL)
+		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
+		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
+		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
+		
+		return true
+
+
 ## The primary TCP server to use
 var _tcp_socket: TCPServer = TCPServer.new()
 
@@ -99,25 +130,31 @@ var _unknown_nodes: Dictionary[String, ConstellationNode]
 
 ## Init
 func _init() -> void:
+	ConstellationNode._network = self
+	ConstellationSession._network = self
+	
 	set_process(false)
-	Details.print_startup_detils()
+	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
+	
+	if not ConstellationConfig.disable_startup_details:
+		Details.print_startup_detils()
 	
 	_local_node._set_node_ip(_bind_address)
 	add_child(_local_node)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
-	if cli_args.has("--node-name"):
-		_local_node._set_node_name(str(cli_args[cli_args.find("--node-name") + 1]))
+	if cli_args.has("--ctl-node-name"):
+		_local_node._set_node_name(str(cli_args[cli_args.find("--ctl-node-name") + 1]))
 	
-	if cli_args.has("--controler"):
+	if cli_args.has("--ctl-controler"):
 		_role_flags = RoleFlags.CONTROLLER
 		_local_node._set_role_flags(_role_flags)
 	
-	if cli_args.has("--interface"):
-		_bind_address = str(cli_args[cli_args.find("--interface") + 1])
+	if cli_args.has("--ctl-interface"):
+		_bind_address = str(cli_args[cli_args.find("--ctl-interface") + 1])
 	
-	if cli_args.has("--node-id"):
-		_local_node._set_node_id(str(cli_args[cli_args.find("--node-id") + 1]))
+	if cli_args.has("--ctl-node-id"):
+		_local_node._set_node_id(str(cli_args[cli_args.find("--ctl-node-id") + 1]))
 
 
 ## Polls the socket
@@ -144,11 +181,11 @@ func start_node() -> Error:
 	
 	_bind_network()
 	if _network_state != NetworkState.BOUND:
-		print("Error staring network")
+		_log("Error staring network")
 		return FAILED
 	
 	else:
-		print("")
+		_log("")
 		_broadcast_relay_socket.connect_to_host(NETWORK_LOOPBACK, UDP_BROADCAST_PORT)
 	
 	var relay_start_allowed: bool = false
@@ -277,7 +314,7 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 		var unknown_node: ConstellationNode = ConstellationNode.create_unknown_node(p_node_id)
 		
 		_unknown_nodes[p_node_id] = unknown_node
-		print("Creating unknown node: ", unknown_node.get_node_id())
+		_log("Creating unknown node: ", unknown_node.get_node_id())
 		
 		return unknown_node
 	
@@ -289,7 +326,7 @@ func get_node_array(p_from: ConstaNetSessionAnnounce, p_create_unknown: bool = f
 	var typed_array: Array[ConstellationNode]
 	
 	for node_id: String in p_from.nodes:
-		var node: ConstellationNode = Network.get_node_from_id(node_id, p_create_unknown)
+		var node: ConstellationNode = get_node_from_id(node_id, p_create_unknown)
 		
 		if node not in typed_array:
 			typed_array.append(node)
@@ -357,6 +394,28 @@ func leave_session() -> bool:
 	return true
 
 
+## Logs up to 8 parameters to the console
+func _log(p_a=null, p_b=null, p_c=null, p_d=null, p_e=null, p_f=null, p_g=null) -> void:
+	var args: Array[Variant] = [p_a, p_b, p_c, p_d, p_e, p_f, p_g].filter(func (item: Variant): return item != null)
+	
+	if ConstellationConfig.custom_loging_method.is_valid():
+		ConstellationConfig.custom_loging_method.callv([ConstellationConfig.log_prefix] + args)
+	
+	else:
+		print(ConstellationConfig.log_prefix, "".join(args))
+
+
+## Logs up to 8 parameters to the console verbose
+func _logv(p_a=null, p_b=null, p_c=null, p_d=null, p_e=null, p_f=null, p_g=null) -> void:
+	var args: Array[Variant] = [p_a, p_b, p_c, p_d, p_e, p_f, p_g].filter(func (item: Variant): return item != null)
+	
+	if ConstellationConfig.custom_loging_method_verbose.is_valid():
+		ConstellationConfig.custom_loging_method_verbose.callv([ConstellationConfig.log_prefix] + args)
+	
+	else:
+		print_verbose(ConstellationConfig.log_prefix, "".join(args))
+
+
 ## Starts this node, opens network connection
 func _bind_network() -> void:
 	_udp_broadcast_socket.set_broadcast_enabled(true)
@@ -366,16 +425,16 @@ func _bind_network() -> void:
 	var udp_error: Error = _udp_socket.bind(0)
 	
 	if tcp_error:
-		print("Error binding TCP: ", error_string(tcp_error))
+		_log("Error binding TCP: ", error_string(tcp_error))
 	else:
 		_tcp_port = _tcp_socket.get_local_port()
-		print("TCP bound on port: ", _tcp_port)
+		_log("TCP bound on port: ", _tcp_port)
 	
 	if udp_error:
-		print("Error binding UDP: ", error_string(udp_error))
+		_log("Error binding UDP: ", error_string(udp_error))
 	else:
 		_udp_port = _udp_socket.get_local_port()
-		print("UDP bound on port: ", _udp_port)
+		_log("UDP bound on port: ", _udp_port)
 	
 	if not tcp_error and not udp_error:
 		_set_network_state(NetworkState.BOUND)
@@ -472,7 +531,7 @@ func _find_and_connect_relay() -> void:
 	relay_disco.tcp_port = _tcp_port
 	relay_disco.udp_port = _udp_port
 	
-	print("Discovering Relay Server")
+	_log("Discovering Relay Server")
 	_broadcast_relay_socket.put_packet(relay_disco.get_as_string().to_utf8_buffer())
 	
 	if not is_node_ready():
@@ -481,7 +540,7 @@ func _find_and_connect_relay() -> void:
 	await get_tree().create_timer(RELAY_WAIT_TIME).timeout
 	
 	if _found_relay_server:
-		print("Found and connected to RelayServer")
+		_log("Found and connected to RelayServer")
 		
 		_relay_tcp_stream.connect_to_host(NETWORK_LOOPBACK, RelayServer.TCP_PORT)
 		_relay_tcp_queue.append(relay_disco)
@@ -490,7 +549,7 @@ func _find_and_connect_relay() -> void:
 		_begin_discovery()
 	
 	else:
-		print("Unable to find RelayServer, starting one...")
+		_log("Unable to find RelayServer, starting one...")
 		OS.create_instance(["--main-loop", "RelayServer", "--headless"])
 		
 		await get_tree().create_timer(RELAY_BOOT_WAIT_TIME).timeout
@@ -502,14 +561,14 @@ func _find_and_connect_relay() -> void:
 			retries += 1
 		
 		if _found_relay_server:
-			print("Started RelayServer")
+			_log("Started RelayServer")
 			
 			_relay_tcp_queue.append(relay_disco)
 			_begin_discovery()
 			_set_network_state(NetworkState.READY)
 		
 		else:
-			print("Unable to contact RelayServer after retries: ", retries)
+			_log("Unable to contact RelayServer after retries: ", retries)
 			_network_state_err_code = ERR_CANT_CONNECT
 			_set_network_state(NetworkState.ERROR)
 
@@ -577,7 +636,7 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
 			node.update_from_discovery(p_discovery)
 			
 			_unknown_nodes.erase(p_discovery.origin_id)
-			print("Using unknown node: ", node.get_node_id())
+			_log("Using unknown node: ", node.get_node_id())
 			
 		
 		else:
@@ -602,7 +661,7 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 			session.update_with(p_message)
 			
 			_unknown_sessions.erase(p_message.session_id)
-			print("Using unknown session: ", session.get_session_id())
+			_log("Using unknown session: ", session.get_session_id())
 		
 		else:
 			session = ConstellationSession.create_from_session_announce(p_message)

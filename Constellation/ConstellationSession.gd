@@ -5,6 +5,9 @@ class_name ConstellationSession extends NetworkSession
 ## Class to repersent a session
 
 
+## The Constellation NetworkHandler
+static var _network: Constellation = null
+
 ## All nodes in this session
 var _nodes: Array[ConstellationNode]
 
@@ -28,7 +31,7 @@ static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) ->
 	session._set_name(p_message.session_name)
 	
 	for node_id: String in p_message.nodes:
-		var node: ConstellationNode = Network.get_node_from_id(node_id, true)
+		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
 		if node:
 			session._add_node(node)
 	
@@ -51,9 +54,9 @@ func update_with(p_message: ConstaNetSessionAnnounce) -> bool:
 	if _session_id != p_message.session_id:
 		return false
 	
-	_set_session_master(Network.get_node_from_id(p_message.session_master, true))
+	_set_session_master(_network.get_node_from_id(p_message.session_master, true))
 	_set_name(p_message.session_name)
-	_set_node_array(Network.get_node_array(p_message, true))
+	_set_node_array(_network.get_node_array(p_message, true))
 	
 	return true
 
@@ -73,10 +76,10 @@ func set_priority_order(p_node: NetworkNode, p_position: int) -> bool:
 	message.session_id = _session_id
 	message.node_id = p_node.get_node_id()
 	message.position = pos
-	message.origin_id = Network.get_node_id()
+	message.origin_id = _network.get_node_id()
 	message.set_announcement(true)
 	
-	Network.send_message_broadcast(message)
+	_network.send_message_broadcast(message)
 	return true
 
 
@@ -89,10 +92,10 @@ func set_master(p_node: NetworkNode) -> bool:
 	
 	message.session_id = _session_id
 	message.node_id = p_node.get_node_id()
-	message.origin_id = Network.get_node_id()
+	message.origin_id = _network.get_node_id()
 	message.set_announcement(true)
 	
-	Network.send_message_broadcast(message)
+	_network.send_message_broadcast(message)
 	return true
 
 
@@ -167,7 +170,7 @@ func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.MAS
 
 ## Sends a pre-existing ConstaNetCommand message to the session
 func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.MASTER) -> Error:
-	var local_node: ConstellationNode = Network.get_local_node()
+	var local_node: ConstellationNode = _network.get_local_node()
 	p_command.in_session = _session_id
 	p_command.origin_id = local_node.get_node_id()
 	
@@ -304,10 +307,10 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 
 ## Called when the ConnectionState changes on any node in this session
 func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
-	if Network.get_local_node() not in _nodes:
+	if _network.get_local_node() not in _nodes:
 		return
 	
-	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name(), "From Node:", Network.get_local_node().get_node_name())
+	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name(), "From Node:", _network.get_local_node().get_node_name())
 	
 	match p_connection_state:
 		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:

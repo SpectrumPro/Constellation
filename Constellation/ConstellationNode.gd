@@ -25,6 +25,10 @@ const Flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags
 ## NetworkRole
 const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 
+
+## The Constellation NetworkHandler
+static var _network: Constellation = null
+
 ## Current Network role
 var _role_flags: int = RoleFlags.EXECUTOR
 
@@ -113,12 +117,12 @@ func _process(delta: float) -> void:
 		var data: Array = _tcp_socket.get_data(_tcp_socket.get_available_bytes())
 		var packet: PackedByteArray = data[1]
 		
-		Network.handle_packet(packet)
+		_network.handle_packet(packet)
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
 func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int) -> ConstaNetHeadder:
-	p_headder.origin_id = Network.get_node_id()
+	p_headder.origin_id = _network.get_node_id()
 	p_headder.flags |= p_flags
 	
 	if not is_local():
@@ -144,18 +148,18 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 		
 		MessageType.SESSION_ANNOUNCE:
 			if p_message.is_announcement() and p_message.nodes.has(_node_id):
-				_set_session(Network.get_session_from_id(p_message.session_id, true))
+				_set_session(_network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_JOIN:
-			var session: ConstellationSession = Network.get_session_from_id(p_message.session_id)
-			if session == Network.get_local_node().get_session():
+			var session: ConstellationSession = _network.get_session_from_id(p_message.session_id)
+			if session == _network.get_local_node().get_session():
 				connect_tcp()
 			
-			_set_session(Network.get_session_from_id(p_message.session_id, true))
+			_set_session(_network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_LEAVE:
-			var session: ConstellationSession = Network.get_session_from_id(p_message.session_id)
-			if session == Network.get_local_node().get_session():
+			var session: ConstellationSession = _network.get_session_from_id(p_message.session_id)
+			if session == _network.get_local_node().get_session():
 				disconnect_tcp()
 			
 			_leave_session()
@@ -169,8 +173,11 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 				
 				ConstaNetSetAttribute.Attribute.SESSION:
 					if is_local():
-						var session: ConstellationSession = Network.get_session_from_id(p_message.value)
-						Network.join_session(session) if session else Network.leave_session()
+						var session: ConstellationSession = _network.get_session_from_id(p_message.value)
+						if session:
+							_network.join_session(session)
+						else:
+							_network.leave_session()
 		
 		MessageType.COMMAND:
 			p_message = p_message as ConstaNetCommand
@@ -255,7 +262,7 @@ func join_session(p_session: NetworkSession) -> bool:
 		return false
 	
 	if is_local():
-		return Network.join_session(p_session)
+		return _network.join_session(p_session)
 	
 	var set_attribute: ConstaNetSetAttribute = auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
 	
@@ -272,7 +279,7 @@ func leave_session() -> bool:
 		return false
 	
 	if is_local():
-		return Network.leave_session()
+		return _network.leave_session()
 	
 	var set_attribute: ConstaNetSetAttribute = auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
 	
@@ -364,7 +371,7 @@ func set_node_name(p_name: String) -> void:
 	set_attribute.value = p_name
 	
 	if is_local() and _set_node_name(p_name):
-		Network.send_message_broadcast(set_attribute)
+		_network.send_message_broadcast(set_attribute)
 	else:
 		send_message_udp(set_attribute)
 

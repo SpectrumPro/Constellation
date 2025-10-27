@@ -47,9 +47,6 @@ const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
 
 ## ConstellationConfig object
 class ConstellationConfig extends Object:
-	## Disables the colorfull start up logo and copyright headder
-	static var disable_startup_details: bool = false
-	
 	## Defines a custom callable to call when logging infomation
 	static var custom_loging_method: Callable = Callable()
 	
@@ -68,7 +65,6 @@ class ConstellationConfig extends Object:
 		
 		var config: Dictionary = script.get("config")
 		
-		disable_startup_details = type_convert(config.get("disable_startup_details", disable_startup_details), TYPE_BOOL)
 		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
 		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
 		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
@@ -136,10 +132,11 @@ func _init() -> void:
 	set_process(false)
 	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
 	
-	if not ConstellationConfig.disable_startup_details:
-		Details.print_startup_detils()
+	_handler_name = "Constellation"
+	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
 	
 	_local_node._set_node_ip(_bind_address)
+	_local_node._set_node_name("LocalNode")
 	add_child(_local_node)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
@@ -155,6 +152,10 @@ func _init() -> void:
 	
 	if cli_args.has("--ctl-node-id"):
 		_local_node._set_node_id(str(cli_args[cli_args.find("--ctl-node-id") + 1]))
+	
+	(func ():
+		node_found.emit(_local_node)
+	).call_deferred()
 
 
 ## Polls the socket
@@ -207,6 +208,7 @@ func start_node() -> Error:
 
 ## Stops the node
 func stop_node(p_internal_only: bool = false) -> Error:
+	_log("Shutting Down")
 	if not p_internal_only:
 		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
 	
@@ -234,7 +236,16 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_disco_timer.stop()
 	
 	_set_network_state(NetworkState.OFFLINE)
+	_log("NetworkState: OFFLINE")
 	return OK
+
+
+## Sends a command to the session, using p_node_filter as the NodeFilter
+func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER) -> Error:
+	if not _local_node.get_session():
+		return ERR_UNAVAILABLE
+	
+	return _local_node.get_session().send_command(p_command, p_node_filter)
 
 
 ## Returns a list of all known nodes
@@ -355,8 +366,12 @@ func create_session(p_name: String) -> NetworkSession:
 
 ## Joins a pre-existing session on the network
 func join_session(p_session: NetworkSession) -> bool:
-	if _local_node.get_session() or not p_session:
+	if not p_session:
+		leave_session()
 		return false
+	
+	if _local_node.get_session():
+		leave_session()
 	
 	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
 	
@@ -394,10 +409,8 @@ func leave_session() -> bool:
 	return true
 
 
-## Logs up to 8 parameters to the console
-func _log(p_a=null, p_b=null, p_c=null, p_d=null, p_e=null, p_f=null, p_g=null) -> void:
-	var args: Array[Variant] = [p_a, p_b, p_c, p_d, p_e, p_f, p_g].filter(func (item: Variant): return item != null)
-	
+## Logs to the console
+func _log(...args) -> void:
 	if ConstellationConfig.custom_loging_method.is_valid():
 		ConstellationConfig.custom_loging_method.callv([ConstellationConfig.log_prefix] + args)
 	
@@ -405,10 +418,8 @@ func _log(p_a=null, p_b=null, p_c=null, p_d=null, p_e=null, p_f=null, p_g=null) 
 		print(ConstellationConfig.log_prefix, "".join(args))
 
 
-## Logs up to 8 parameters to the console verbose
-func _logv(p_a=null, p_b=null, p_c=null, p_d=null, p_e=null, p_f=null, p_g=null) -> void:
-	var args: Array[Variant] = [p_a, p_b, p_c, p_d, p_e, p_f, p_g].filter(func (item: Variant): return item != null)
-	
+## Logs to the console verbose
+func _logv(...args) -> void:
 	if ConstellationConfig.custom_loging_method_verbose.is_valid():
 		ConstellationConfig.custom_loging_method_verbose.callv([ConstellationConfig.log_prefix] + args)
 	

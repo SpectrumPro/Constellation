@@ -98,6 +98,27 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 	return node
 
 
+## Init
+func _init() -> void:
+	settings_manager.set_owner(self)
+	settings_manager.set_inheritance_array(["NetworkNode", "ConstellationNode"])
+	
+	settings_manager.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState
+	).display("NetworkNode", 0)
+	
+	settings_manager.register_setting("Name", Data.Type.NAME, set_node_name, get_node_name, [node_name_changed]
+	).display("NetworkNode", 1)
+	
+	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, set_session, get_session, [session_changed]
+	).display("NetworkNode", 2).set_class_filter(ConstellationSession)
+	
+	settings_manager.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed]
+	).display("ConstellationNode", 3).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)
+	
+	settings_manager.register_status("IpAddress", Data.Type.IP, get_node_ip, [node_ip_changed]).set_ip_type(IP.TYPE_IPV4
+	).display("ConstellationNode", 4)
+
+
 ## Called each frame
 func _process(delta: float) -> void:
 	_tcp_socket.poll()
@@ -175,7 +196,10 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 			
 			match p_message.attribute:
 				ConstaNetSetAttribute.Attribute.NAME:
-					_set_node_name(p_message.value)
+					if is_local():
+						set_node_name(p_message.value)
+					else:
+						_set_node_name(p_message.value)
 				
 				ConstaNetSetAttribute.Attribute.SESSION:
 					if is_local():
@@ -192,6 +216,7 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 				return
 			
 			command_recieved.emit(p_message)
+			_network.command_recieved.emit(_network.get_node_from_id(p_message.origin_id), p_message.data_type, p_message.command)
 
 
 ## Updates this nodes info from a discovery packet
@@ -398,6 +423,14 @@ func set_node_name(p_name: String) -> void:
 		send_message_udp(set_attribute)
 
 
+## Sets the role flags
+func set_role_flags(p_role_flags: int) -> bool:
+	if not is_local():
+		return false
+	
+	return _set_role_flags(p_role_flags)
+
+
 ## Sets the network role
 func _set_role_flags(p_role_flags: int) -> bool:
 	if p_role_flags == _role_flags:
@@ -460,6 +493,7 @@ func _set_session(p_session: ConstellationSession) -> bool:
 	
 	_session._add_node(self)
 	session_joined.emit(_session)
+	session_changed.emit(_session)
 	
 	return true
 
@@ -468,6 +502,7 @@ func _set_session(p_session: ConstellationSession) -> bool:
 func _set_session_no_join(p_session: ConstellationSession) -> void:
 	_session = p_session
 	_remove_session_master_mark()
+	session_changed.emit(p_session)
 	
 	if p_session:
 		session_joined.emit(p_session)
@@ -483,6 +518,7 @@ func _leave_session() -> bool:
 	_session._remove_node(self)
 	_session = null
 	session_left.emit()
+	session_changed.emit(null)
 	
 	return true
 

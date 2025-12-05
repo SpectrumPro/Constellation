@@ -15,6 +15,7 @@ enum Type {
 	DISCOVERY,				# Client/server broadcasts "Who’s there?"
 	GOODBYE,				# Node going offline
 	COMMAND,				# Lighting cue or control command
+	MULTI_PART,				# Multipart messsage
 	
 	SET_ATTRIBUTE,			# Sets an attribute on a node, name, ipaddress, ect..
 	STATE_REQUEST,			# Request full state sync
@@ -50,17 +51,18 @@ enum RoleFlags {
 
 ## Matches the Type enum to a class
 static var ClassTypes: Dictionary[int, Script] = {
-	Type.UNKNOWN: ConstaNetHeadder,
-	Type.DISCOVERY: ConstaNetDiscovery,
-	Type.GOODBYE: ConstaNetGoodbye,
-	Type.COMMAND: ConstaNetCommand,
-	Type.SET_ATTRIBUTE: ConstaNetSetAttribute,
-	Type.SESSION_ANNOUNCE: ConstaNetSessionAnnounce,
-	Type.SESSION_DISCOVERY: ConstaNetSessionDiscovery,
-	Type.SESSION_JOIN: ConstaNetSessionJoin,
-	Type.SESSION_LEAVE: ConstaNetSessionLeave,
-	Type.SESSION_SET_PRIORITY: ConstaNetSessionSetPriority,
-	Type.SESSION_SET_MASTER: ConstaNetSessionSetMaster
+	Type.UNKNOWN: 				ConstaNetHeadder,
+	Type.DISCOVERY: 			ConstaNetDiscovery,
+	Type.GOODBYE: 				ConstaNetGoodbye,
+	Type.COMMAND: 				ConstaNetCommand,
+	Type.MULTI_PART: 			ConstaNetMultiPart,
+	Type.SET_ATTRIBUTE: 		ConstaNetSetAttribute,
+	Type.SESSION_ANNOUNCE: 		ConstaNetSessionAnnounce,
+	Type.SESSION_DISCOVERY: 	ConstaNetSessionDiscovery,
+	Type.SESSION_JOIN: 			ConstaNetSessionJoin,
+	Type.SESSION_LEAVE: 		ConstaNetSessionLeave,
+	Type.SESSION_SET_PRIORITY: 	ConstaNetSessionSetPriority,
+	Type.SESSION_SET_MASTER: 	ConstaNetSessionSetMaster
 }
 
 

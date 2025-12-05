@@ -5,17 +5,11 @@ class_name Constellation extends NetworkHandler
 ## NetworkHandler for the Constellation Network Engine
 
 
-## List of allowed host OSes to start the broadcast relay on
-const BROADCAST_RELAY_ALLOWED_HOSTS: Array[String] = ["linux", "macos", "windows"]
+## The Multicast group
+const MCAST_GROUP: String = "239.38.23.1"
 
 ## UDP bind port
-const UDP_BROADCAST_PORT: int = 3823
-
-## Network broadcast address
-const NETWORK_BROADCAST: String = "192.168.1.255"
-
-## Network loopback address
-const NETWORK_LOOPBACK: String = "127.0.0.1"
+const UDP_MCAST_PORT: int = 3823
 
 ## Time in seconds for discovery
 const DISCO_TIMEOUT: int = 10
@@ -26,14 +20,8 @@ const DISCO_DISCONNECT_TIME: int = 12
 ## Wait time in seconds for a responce from from a disco broadcast
 const DISCO_WAIT_TIME: int = 1
 
-## Wait time in seconds for a responce from the relay server
-const RELAY_WAIT_TIME: int = 1
-
-## Wait time in seconds for a responce from a newley launched relay server
-const RELAY_BOOT_WAIT_TIME: int = 1
-
-## Max retry count to contact the RelayServer
-const RELAY_MAX_RETRIES: int = 10
+## Max time to wait in second for the next chunk of a multipart message to be recieved
+const MULTI_PART_MAX_WAIT: int = 10
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -56,6 +44,12 @@ class ConstellationConfig extends Object:
 	## A String prefix to print before all message logs
 	static var log_prefix: String = ""
 	
+	## Default address to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	static var bind_address: String = "127.0.0.1"
+	
+	## Default port to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	static var bind_interface: String = "lo"
+	
 	## Loads config from a file
 	static func load_config(p_path: String) -> bool:
 		var script: Variant = load(p_path)
@@ -68,6 +62,8 @@ class ConstellationConfig extends Object:
 		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
 		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
 		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
+		bind_address = type_convert(config.get("bind_address", bind_address), TYPE_STRING)
+		bind_interface = type_convert(config.get("bind_interface", bind_address), TYPE_STRING)
 		
 		return true
 
@@ -84,26 +80,17 @@ var _tcp_port: int = 0
 ## The current UDP port
 var _udp_port: int = 0
 
-## Queue of messages waiting to be send to the RelayServer once TCP connects
-var _relay_tcp_queue: Array[ConstaNetHeadder]
+## PacketPeerUDP to transmit to multicast
+var _mcast_tx: PacketPeerUDP = PacketPeerUDP.new()
 
-## The broadcast relay socket
-var _broadcast_relay_socket: PacketPeerUDP = PacketPeerUDP.new()
+## PacketPeerUDP to recive from multicast
+var _mcast_rx: PacketPeerUDP = PacketPeerUDP.new()
 
-## TCP Stream connected to the RelayServer
-var _relay_tcp_stream: StreamPeerTCP = StreamPeerTCP.new()
-
-## The PacketPeerUDP to use when sending to broadcast
-var _udp_broadcast_socket: PacketPeerUDP = PacketPeerUDP.new()
+## Array containing each connected StreamPeerTCP
+var _connected_tcp_peers: Array[StreamPeerTCP]
 
 ## Network Role
 var _role_flags: int = RoleFlags.EXECUTOR
-
-## Relay server state
-var _found_relay_server: bool = true
-
-## IP bind address
-var _bind_address: String = "127.0.0.1"
 
 ## The ConstellationNode for the local node
 var _local_node: ConstellationNode = ConstellationNode.create_local_node()
@@ -123,6 +110,9 @@ var _known_nodes: Dictionary[String, ConstellationNode] = {}
 ## Stores all unknown nodes yet to be found on the network
 var _unknown_nodes: Dictionary[String, ConstellationNode]
 
+## Stores all multi part messages being recieved
+var _active_multi_parts: Dictionary[String, IncommingMultiPart]
+
 
 ## Init
 func _init() -> void:
@@ -135,7 +125,7 @@ func _init() -> void:
 	_handler_name = "Constellation"
 	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
 	
-	_local_node._set_node_ip(_bind_address)
+	_local_node._set_node_ip(ConstellationConfig.bind_address)
 	_local_node._set_node_name("LocalNode")
 	add_child(_local_node)
 	
@@ -147,9 +137,6 @@ func _init() -> void:
 		_role_flags = RoleFlags.CONTROLLER
 		_local_node._set_role_flags(_role_flags)
 	
-	if cli_args.has("--ctl-interface"):
-		_bind_address = str(cli_args[cli_args.find("--ctl-interface") + 1])
-	
 	if cli_args.has("--ctl-node-id"):
 		_local_node._set_node_id(str(cli_args[cli_args.find("--ctl-node-id") + 1]))
 	
@@ -160,15 +147,34 @@ func _init() -> void:
 
 ## Polls the socket
 func _process(delta: float) -> void:
-	if _udp_socket.get_available_packet_count():
+	while _udp_socket.get_available_packet_count() > 1:
 		_handle_packet(_udp_socket.get_packet())
 	
-	_relay_tcp_stream.poll()
-	if _relay_tcp_queue and _relay_tcp_stream.get_status() == StreamPeerTCP.Status.STATUS_CONNECTED:
-		for message: ConstaNetHeadder in _relay_tcp_queue:
-			_relay_tcp_stream.put_data(message.get_as_packet())
+	while _mcast_rx.get_available_packet_count() > 1:
+		_handle_packet(_mcast_rx.get_packet())
+	
+	while _tcp_socket.is_connection_available():
+		_connected_tcp_peers.append(_tcp_socket.take_connection())
+	
+	for peer: StreamPeerTCP in _connected_tcp_peers.duplicate():
+		peer.poll()
 		
-		_relay_tcp_queue.clear()
+		if peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
+			_connected_tcp_peers.erase(peer)
+		
+		elif peer.get_available_bytes():
+			_handle_packet(peer.get_data(peer.get_available_bytes()))
+	
+	for incomming_multi_part: IncommingMultiPart in _active_multi_parts.values():
+		if incomming_multi_part.is_complete():
+			_handle_packet(incomming_multi_part.get_data())
+			_active_multi_parts.erase(incomming_multi_part.id)
+			incomming_multi_part.free()
+		
+		elif Time.get_unix_time_from_system() - incomming_multi_part.last_seen > MULTI_PART_MAX_WAIT:
+			_logv("Dropping multipart ", incomming_multi_part.id, " due to timeout")
+			_active_multi_parts.erase(incomming_multi_part.id)
+			incomming_multi_part.free()
 
 
 ## Starts the node
@@ -178,46 +184,27 @@ func start_node() -> Error:
 	
 	stop_node(true)
 	_set_network_state(NetworkState.INITIALIZING)
-	_known_nodes[get_node_id()] = _local_node
 	
+	_known_nodes[get_node_id()] = _local_node
 	_bind_network()
+	
 	if _network_state != NetworkState.BOUND:
 		_log("Error staring network")
 		return FAILED
 	
-	else:
-		_log("")
-		_broadcast_relay_socket.connect_to_host(NETWORK_LOOPBACK, UDP_BROADCAST_PORT)
-	
-	var relay_start_allowed: bool = false
-	for host: String in BROADCAST_RELAY_ALLOWED_HOSTS:
-		if OS.has_feature(host):
-			relay_start_allowed = true
-			_found_relay_server = false
-			break
-	
-	if relay_start_allowed:
-		_find_and_connect_relay()
-		
-	else:
-		_set_network_state(NetworkState.READY)
-		_begin_discovery()
+	_set_network_state(NetworkState.READY)
+	_begin_discovery()
 	
 	return OK
 
 
 ## Stops the node
 func stop_node(p_internal_only: bool = false) -> Error:
-	_log("Shutting Down")
 	if not p_internal_only:
+		_log("Shutting Down")
 		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
 	
-	_tcp_socket.stop()
-	_udp_socket.close()
-	_relay_tcp_stream.disconnect_from_host()
-	_broadcast_relay_socket.close()
-	_udp_broadcast_socket.close()
-	_relay_tcp_queue.clear()
+	_close_network()
 	
 	for node: ConstellationNode in _known_nodes.values():
 		node.close()
@@ -232,7 +219,6 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_unknown_nodes.clear()
 	_unknown_sessions.clear()
 	
-	_found_relay_server = false
 	_disco_timer.stop()
 	
 	_set_network_state(NetworkState.OFFLINE)
@@ -241,11 +227,11 @@ func stop_node(p_internal_only: bool = false) -> Error:
 
 
 ## Sends a command to the session, using p_node_filter as the NodeFilter
-func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER) -> Error:
+func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER, p_nodes: Array[NetworkNode] = []) -> Error:
 	if not _local_node.get_session():
 		return ERR_UNAVAILABLE
 	
-	return _local_node.get_session().send_command(p_command, p_node_filter)
+	return _local_node.get_session().send_command(p_command, p_node_filter, p_nodes)
 
 
 ## Returns a list of all known nodes
@@ -373,6 +359,9 @@ func join_session(p_session: NetworkSession) -> bool:
 	if _local_node.get_session():
 		leave_session()
 	
+	for node: ConstellationNode in p_session.get_nodes():
+		node.connect_tcp()
+	
 	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
 	
 	message.origin_id = get_node_id()
@@ -380,10 +369,7 @@ func join_session(p_session: NetworkSession) -> bool:
 	message.set_request(true)
 	
 	_local_node._set_session(p_session)
-	_send_message_broadcast(message)
-	
-	for node: ConstellationNode in p_session.get_nodes():
-		node.connect_tcp()
+	_send_message_mcast(message)
 	
 	return true
 
@@ -401,7 +387,7 @@ func leave_session() -> bool:
 	message.session_id = session.get_session_id()
 	message.set_request(true)
 	
-	_send_message_broadcast(message)
+	_send_message_mcast(message)
 	
 	for node: ConstellationNode in session.get_nodes():
 		node.disconnect_tcp()
@@ -429,39 +415,63 @@ func _logv(...args) -> void:
 
 ## Starts this node, opens network connection
 func _bind_network() -> void:
-	_udp_broadcast_socket.set_broadcast_enabled(true)
-	_udp_broadcast_socket.set_dest_address(NETWORK_BROADCAST, UDP_BROADCAST_PORT)
+	_mcast_tx.set_reuse_address_enabled(true)
+	_mcast_rx.set_reuse_address_enabled(true)
+	_mcast_tx.set_reuse_port_enabled(true)
+	_mcast_rx.set_reuse_port_enabled(true)
+	
+	var tx_bind_error: Error = _mcast_tx.bind(UDP_MCAST_PORT, ConstellationConfig.bind_address)
+	var rx_bind_error: Error = _mcast_rx.bind(UDP_MCAST_PORT, MCAST_GROUP)
+	
+	var tx_config_error: Error = _mcast_tx.set_dest_address(MCAST_GROUP, UDP_MCAST_PORT)
+	var rx_config_error: Error = _mcast_rx.join_multicast_group(MCAST_GROUP, ConstellationConfig.bind_interface)
 	
 	var tcp_error: Error = _tcp_socket.listen(0)
 	var udp_error: Error = _udp_socket.bind(0)
 	
-	if tcp_error:
-		_log("Error binding TCP: ", error_string(tcp_error))
-	else:
-		_tcp_port = _tcp_socket.get_local_port()
-		_log("TCP bound on port: ", _tcp_port)
-	
-	if udp_error:
-		_log("Error binding UDP: ", error_string(udp_error))
-	else:
-		_udp_port = _udp_socket.get_local_port()
-		_log("UDP bound on port: ", _udp_port)
-	
-	if not tcp_error and not udp_error:
-		_set_network_state(NetworkState.BOUND)
-		set_process(true)
-	
-	else:
+	if tx_bind_error or rx_bind_error or tx_config_error or rx_config_error or tcp_error or udp_error:
+		_log("TX Bind Error: ", error_string(tx_bind_error))
+		_log("RX Bind Error: ", error_string(rx_bind_error))
+		
+		_log("TX Config Error: ", error_string(tx_config_error))
+		_log("RX Config Error: ", error_string(rx_config_error))
+		
+		_log("TCP Bind Error: ", error_string(tcp_error))
+		_log("UDP Bind Error: ", error_string(udp_error))
+		
 		_network_state_err_code = ERR_ALREADY_IN_USE
 		_set_network_state(NetworkState.ERROR)
+	else:
+		_tcp_port = _tcp_socket.get_local_port()
+		_udp_port = _udp_socket.get_local_port()
+		
+		_log("TCP bound on port: ", _tcp_port)
+		_log("UDP bound on port: ", _udp_port)
+		
+		_set_network_state(NetworkState.BOUND)
+		set_process(true)
+
+
+## Closes network sockets
+func _close_network() -> void:
+	_mcast_tx.close()
+	_mcast_rx.close()
+	
+	_tcp_socket.stop()
+	_udp_socket.close()
+	
+	set_process(false)
 
 
 ## Sends a message to UDP Broadcast
-func _send_message_broadcast(p_message: ConstaNetHeadder) -> Error:
+func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	if _network_state == NetworkState.OFFLINE:
 		return ERR_UNAVAILABLE
 	
-	return _udp_broadcast_socket.put_packet(p_message.get_as_string().to_utf8_buffer())
+	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_string().to_utf8_buffer())
+	
+	_logv("Sending MCAST message: ", error_string(tx_error))
+	return tx_error
 
 
 ## Sends a discovery message to broadcasr
@@ -470,7 +480,7 @@ func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Er
 	
 	packet.origin_id = get_node_id()
 	packet.node_name = get_node_name()
-	packet.node_ip = _bind_address
+	packet.node_ip = ConstellationConfig.bind_address
 	packet.role_flags = _role_flags
 	packet.tcp_port = _tcp_port
 	packet.udp_port = _udp_port
@@ -479,7 +489,7 @@ func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Er
 	if _network_state == NetworkState.READY:
 		_disco_timer.start(DISCO_TIMEOUT)
 	
-	return _send_message_broadcast(packet)
+	return _send_message_mcast(packet)
 
 
 ## Sends a session discovery message to broadcast
@@ -489,7 +499,7 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST) -> E
 	message.origin_id = get_node_id()
 	message.flags = p_flags
 	
-	return _send_message_broadcast(message)
+	return _send_message_mcast(message)
 
 
 ## Sends a sessions anouncement message
@@ -503,7 +513,7 @@ func _send_session_anouncement(p_session: ConstellationSession, p_flags: int = C
 	message.nodes = [get_node_id()]
 	message.flags = p_flags
 	
-	return _send_message_broadcast(message)
+	return _send_message_mcast(message)
 
 
 ## Sends a goodbye message
@@ -514,7 +524,7 @@ func _send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOU
 	message.flags = p_flags
 	message.reason = p_reason
 	
-	return _send_message_broadcast(message)
+	return _send_message_mcast(message)
 
 
 ## Starts the discovery stage
@@ -530,67 +540,9 @@ func _begin_discovery() -> void:
 	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
-## Find and connects to a RelayServer, or launches a new one
-func _find_and_connect_relay() -> void:
-	var relay_disco: ConstaNetDiscovery = ConstaNetDiscovery.new()
-		
-	relay_disco.flags = ConstaNetHeadder.Flags.REQUEST
-	relay_disco.origin_id = get_node_id()
-	relay_disco.target_id = RelayServer.NODE_ID
-	relay_disco.node_ip = _bind_address
-	relay_disco.node_name = get_node_name()
-	relay_disco.tcp_port = _tcp_port
-	relay_disco.udp_port = _udp_port
-	
-	_log("Discovering Relay Server")
-	_broadcast_relay_socket.put_packet(relay_disco.get_as_string().to_utf8_buffer())
-	
-	if not is_node_ready():
-		await ready
-	
-	await get_tree().create_timer(RELAY_WAIT_TIME).timeout
-	
-	if _found_relay_server:
-		_log("Found and connected to RelayServer")
-		
-		_relay_tcp_stream.connect_to_host(NETWORK_LOOPBACK, RelayServer.TCP_PORT)
-		_relay_tcp_queue.append(relay_disco)
-		
-		_set_network_state(NetworkState.READY)
-		_begin_discovery()
-	
-	else:
-		_log("Unable to find RelayServer, starting one...")
-		OS.create_instance(["--main-loop", "RelayServer", "--headless"])
-		
-		await get_tree().create_timer(RELAY_BOOT_WAIT_TIME).timeout
-		
-		var retries: int = 0
-		while retries < RELAY_MAX_RETRIES and not _found_relay_server:
-			_broadcast_relay_socket.put_packet(relay_disco.get_as_string().to_utf8_buffer())
-			await get_tree().create_timer(RELAY_BOOT_WAIT_TIME).timeout
-			retries += 1
-		
-		if _found_relay_server:
-			_log("Started RelayServer")
-			
-			_relay_tcp_queue.append(relay_disco)
-			_begin_discovery()
-			_set_network_state(NetworkState.READY)
-		
-		else:
-			_log("Unable to contact RelayServer after retries: ", retries)
-			_network_state_err_code = ERR_CANT_CONNECT
-			_set_network_state(NetworkState.ERROR)
-
-
 ## Handles a packet as a PackedByteArray
 func _handle_packet(p_packet: PackedByteArray) -> void:
 	var message: ConstaNetHeadder = ConstaNetHeadder.phrase_string(p_packet.get_string_from_utf8())
-		
-	if message.origin_id == RelayServer.NODE_ID:
-		_found_relay_server = true
-		return
 	
 	if message.is_valid() and message.origin_id != _local_node.get_node_id():
 		_handle_message(message)
@@ -629,6 +581,15 @@ func _handle_message(p_message: ConstaNetHeadder) -> void:
 			
 			if node and session:
 				session._set_session_master(node)
+		
+		MessageType.MULTI_PART:
+			p_message = p_message as ConstaNetMultiPart
+			
+			if _active_multi_parts.has(p_message.multi_part_id):
+				_active_multi_parts[p_message.multi_part_id].store_multi_part(p_message)
+				
+			else:
+				_active_multi_parts[p_message.multi_part_id] = IncommingMultiPart.new(p_message)
 	
 	if p_message.target_id == get_node_id():
 		_local_node.handle_message(p_message)
@@ -702,3 +663,45 @@ func _on_disco_timeout() -> void:
 ## Called when the sessions is to be deleted after all nodes disconnect
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	_known_sessions.erase(p_session.get_session_id())
+
+
+## Class to repersent an incomming multipart message
+class IncommingMultiPart extends Object:
+	## The ID of this multipart message
+	var id: String
+	
+	## Stores all numbered chunks
+	var chunks: Dictionary[int, PackedByteArray] = {}
+	
+	## Number of chunks
+	var num_of_chunks: int = 0
+	
+	## Last seen time
+	var last_seen: float = Time.get_unix_time_from_system()
+	
+	## init
+	func _init(p_multi_part: ConstaNetMultiPart) -> void:
+		id = p_multi_part.multi_part_id
+		num_of_chunks = p_multi_part.num_of_chunks
+		
+		store_multi_part(p_multi_part)
+	
+	
+	## Stores a chunk of data from a ConstaNetMultiPart
+	func store_multi_part(p_multi_part: ConstaNetMultiPart) -> void:
+		chunks[p_multi_part.chunk_id] = p_multi_part.data
+		last_seen = Time.get_unix_time_from_system()
+	
+	
+	## Gets all data that has been sent
+	func get_data() -> PackedByteArray:
+		var result: PackedByteArray
+		
+		for i in range(0, num_of_chunks):
+			result.append_array(chunks.get(i, PackedByteArray()))
+		
+		return result
+	
+	## Returns true if the number of chunks matches what expected
+	func is_complete() -> bool:
+		return chunks.size() >= num_of_chunks

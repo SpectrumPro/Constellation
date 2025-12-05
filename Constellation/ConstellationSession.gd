@@ -166,17 +166,17 @@ func close() -> void:
 
 
 ## Sends a command to the session, using p_node_filter as the NodeFilter
-func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.AUTO) -> Error:
+func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.AUTO, p_nodes: Array[NetworkNode] = []) -> Error:
 	var message: ConstaNetCommand = ConstaNetCommand.new()
 	
 	message.command = p_command
 	message.data_type = typeof(p_command)
 	
-	return send_pre_existing_command(message, p_node_filter)
+	return send_pre_existing_command(message, p_node_filter, p_nodes)
 
 
 ## Sends a pre-existing ConstaNetCommand message to the session
-func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.AUTO) -> Error:
+func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.AUTO, p_nodes: Array[NetworkNode] = []) -> Error:
 	var local_node: ConstellationNode = _network.get_local_node()
 	p_command.in_session = _session_id
 	p_command.origin_id = local_node.get_node_id()
@@ -195,15 +195,14 @@ func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeF
 			
 			else:
 				p_command.target_id = _session_master.get_node_id()
-				return _session_master.send_message_udp(p_command)
-			
+				return _session_master.send_message(p_command)
+		
 		NodeFilter.ALL_NODES:
 			for node: ConstellationNode in _nodes:
 				p_command.target_id = node.get_node_id()
-				node.send_message_udp(p_command)
+				node.send_message(p_command)
 			
 			return OK
-			
 		
 		NodeFilter.ALL_OTHER_NODES:
 			for node: ConstellationNode in _nodes:
@@ -211,8 +210,15 @@ func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeF
 					continue
 				
 				p_command.target_id = node.get_node_id()
-				node.send_message_udp(p_command)
+				node.send_message(p_command)
 				
+			return OK
+		
+		NodeFilter.MANUAL:
+			for node: ConstellationNode in p_nodes:
+				p_command.target_id = node.get_node_id()
+				node.send_message(p_command)
+			
 			return OK
 		
 		_:
@@ -331,3 +337,8 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 			
 			if p_node == _session_master:
 				_set_session_master(_priority_order[0] if _priority_order else null)
+		
+		ConstellationNode.ConnectionState.CONNECTED:
+			if p_node.is_sesion_master() and _network.get_local_node()._emit_session_join_on_tcp_connect:
+				_network.get_local_node()._emit_session_signals(self)
+				_network.get_local_node()._emit_session_join_on_tcp_connect = false

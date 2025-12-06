@@ -62,9 +62,6 @@ var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 ## Previous TCP Peer status
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 
-## Bool to state if session join signals should be emitted when TCP is connected. Only for local node
-var _emit_session_join_on_tcp_connect: bool
-
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
 static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationNode:
@@ -277,7 +274,7 @@ func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 	if not _udp_socket.is_socket_connected():
 		return ERR_CONNECTION_ERROR
 	
-	var buffer: PackedByteArray = p_message.get_as_string().to_utf8_buffer()
+	var buffer: PackedByteArray = p_message.get_as_packet()
 	
 	if buffer.size() > UDP_MTP:
 		_network._logv(ConstaNetHeadder.Type.keys()[p_message.type], " is too large to send as a single frame (", buffer.size(), ") Sending as multipart")
@@ -296,7 +293,7 @@ func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 			multi_part.chunk_id = chunk_id
 			multi_part.data = payload
 			
-			var error: Error = _udp_socket.put_var(multi_part.get_as_packet())
+			var error: Error = _udp_socket.put_packet(multi_part.get_as_packet())
 			
 			if error:
 				return error
@@ -307,7 +304,7 @@ func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 		return OK
 		
 	else:
-		var errcode: Error = _udp_socket.put_var(buffer)
+		var errcode: Error = _udp_socket.put_packet(buffer)
 		return errcode
 
 
@@ -553,17 +550,6 @@ func _set_session_no_join(p_session: ConstellationSession) -> void:
 	else:
 		_remove_session_master_mark()
 	
-	if p_session and p_session.get_session_master():
-		print((p_session.get_session_master().is_tcp_connected()))
-	
-	if (not is_local()) or (not p_session) or (not p_session.get_session_master()) or (p_session.get_session_master().is_tcp_connected()):
-		_emit_session_signals(p_session)
-	else:
-		_emit_session_join_on_tcp_connect = true
-
-
-## Emits join and leave signals for the given session
-func _emit_session_signals(p_session: ConstellationSession) -> void:
 	session_changed.emit(p_session)
 	
 	if p_session:

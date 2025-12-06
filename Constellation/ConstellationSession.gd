@@ -86,7 +86,7 @@ func set_priority_order(p_node: NetworkNode, p_position: int) -> bool:
 	message.origin_id = _network.get_node_id()
 	message.set_announcement(true)
 	
-	_network._send_message_broadcast(message)
+	_network._send_message_mcast(message)
 	return true
 
 
@@ -102,7 +102,7 @@ func set_master(p_node: NetworkNode) -> bool:
 	message.origin_id = _network.get_node_id()
 	message.set_announcement(true)
 	
-	_network._send_message_broadcast(message)
+	_network._send_message_mcast(message)
 	return true
 
 
@@ -339,6 +339,5 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 				_set_session_master(_priority_order[0] if _priority_order else null)
 		
 		ConstellationNode.ConnectionState.CONNECTED:
-			if p_node.is_sesion_master() and _network.get_local_node()._emit_session_join_on_tcp_connect:
-				_network.get_local_node()._emit_session_signals(self)
-				_network.get_local_node()._emit_session_join_on_tcp_connect = false
+			if p_node.is_sesion_master():
+				_network.get_local_node().connected_to_session_master.emit()

@@ -147,10 +147,10 @@ func _init() -> void:
 
 ## Polls the socket
 func _process(delta: float) -> void:
-	while _udp_socket.get_available_packet_count() > 1:
+	while _udp_socket.get_available_packet_count() > 0:
 		_handle_packet(_udp_socket.get_packet())
 	
-	while _mcast_rx.get_available_packet_count() > 1:
+	while _mcast_rx.get_available_packet_count() > 0:
 		_handle_packet(_mcast_rx.get_packet())
 	
 	while _tcp_socket.is_connection_available():
@@ -468,7 +468,7 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	if _network_state == NetworkState.OFFLINE:
 		return ERR_UNAVAILABLE
 	
-	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_string().to_utf8_buffer())
+	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
 	
 	_logv("Sending MCAST message: ", error_string(tx_error))
 	return tx_error
@@ -542,7 +542,7 @@ func _begin_discovery() -> void:
 
 ## Handles a packet as a PackedByteArray
 func _handle_packet(p_packet: PackedByteArray) -> void:
-	var message: ConstaNetHeadder = ConstaNetHeadder.phrase_string(p_packet.get_string_from_utf8())
+	var message: ConstaNetHeadder = ConstaNetHeadder.phrase_packet(p_packet)
 	
 	if message.is_valid() and message.origin_id != _local_node.get_node_id():
 		_handle_message(message)

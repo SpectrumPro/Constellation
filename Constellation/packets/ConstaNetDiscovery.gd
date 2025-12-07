@@ -1,4 +1,3 @@
-
 # Copyright (c) 2025 Liam Sherwin, All rights reserved.
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
@@ -85,13 +84,13 @@ func _phrase_packet(p_packet: PackedByteArray) -> void:
 	node_ip = bytes_to_ip(p_packet.slice(offset, offset + 4))
 	offset += 4
 	
-	role_flags = (p_packet.get(offset) << 8) | p_packet.get(offset + 1)
+	role_flags = ba_to_int(p_packet, offset, 2)
 	offset += 2
 	
-	tcp_port = (p_packet.get(offset) << 8) | p_packet.get(offset + 1)
+	tcp_port = ba_to_int(p_packet, offset, 2)
 	offset += 2
 	
-	udp_port = (p_packet.get(offset) << 8) | p_packet.get(offset + 1)
+	udp_port = ba_to_int(p_packet, offset, 2)
 	offset += 2
 
 

@@ -12,7 +12,7 @@ const VERSION: int = 1
 const NODE_ID_LENGTH: int = 36
 
 ## Length of a ConstaNetHeadder, without origin and target NodeIDs
-const HEADDER_LENGTH_NO_ID: int = 2 + 8 + 2 + 2
+const HEADDER_LENGTH_NO_ID: int = 1 + 8 + 2 + 2
 
 ## Length of a ConstaNetHeadder
 const HEADDER_LENGTH: int = HEADDER_LENGTH_NO_ID + NODE_ID_LENGTH + NODE_ID_LENGTH
@@ -112,7 +112,7 @@ func get_as_string() -> String:
 func get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
 	
-	result.resize(HEADDER_LENGTH_NO_ID - 1)
+	result.resize(HEADDER_LENGTH_NO_ID)
 	
 	result.encode_u16(0, VERSION)	## Version number
 	result.encode_u64(1, 0)			## Placeholder size
@@ -259,7 +259,7 @@ static func phrase_string(p_string: String) -> ConstaNetHeadder:
 
 ## Phrases a PackedByteArray
 static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
-	if not p_packet or p_packet.size() < HEADDER_LENGTH - 1 or p_packet.decode_u8(0) != VERSION:
+	if not is_packet_valid(p_packet):
 		return ConstaNetHeadder.new()
 	
 	var offset: int = 9
@@ -287,22 +287,27 @@ static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
 	
-	message._phrase_packet(p_packet.slice(HEADDER_LENGTH - 1))
+	message._phrase_packet(p_packet.slice(HEADDER_LENGTH))
 	
 	return message
 
 
-## Converts an integer to a PackedByteArray
+## Checks if a given packet is valid
+static func is_packet_valid(p_packet: PackedByteArray) -> bool:
+	return p_packet.size() >= HEADDER_LENGTH and p_packet.decode_u8(0) == VERSION
+
+
+## Converts an integer to a little-endian PackedByteArray
 static func ba(value: int, byte_count: int = 4) -> PackedByteArray:
 	var packed: PackedByteArray = PackedByteArray()
 	
 	for i in range(byte_count):
-		packed.append((value >> (8 * (byte_count - 1 - i))) & 0xFF)
+		packed.append((value >> (8 * i)) & 0xFF)
 	
 	return packed
 
 
-## Reads a big-endian integer from a PackedByteArray
+## Reads a little-endian integer from a PackedByteArray
 static func ba_to_int(p_packet: PackedByteArray, offset: int, byte_count: int) -> int:
 	var result: int = 0
 	
@@ -310,7 +315,7 @@ static func ba_to_int(p_packet: PackedByteArray, offset: int, byte_count: int) -
 		return 0
 	
 	for i in range(byte_count):
-		result = (result << 8) | p_packet.get(offset + i)
+		result |= p_packet[offset + i] << (8 * i)
 	
 	return result
 

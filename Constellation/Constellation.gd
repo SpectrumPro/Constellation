@@ -89,6 +89,9 @@ var _mcast_rx: PacketPeerUDP = PacketPeerUDP.new()
 ## Array containing each connected StreamPeerTCP
 var _connected_tcp_peers: Array[StreamPeerTCP]
 
+## Stores RX data buffers for each connected StreamPeerTCP
+var _tcp_buffers: Dictionary[StreamPeerTCP, PackedByteArray]
+
 ## Network Role
 var _role_flags: int = RoleFlags.EXECUTOR
 
@@ -154,16 +157,36 @@ func _process(delta: float) -> void:
 		_handle_packet(_mcast_rx.get_packet())
 	
 	while _tcp_socket.is_connection_available():
-		_connected_tcp_peers.append(_tcp_socket.take_connection())
+		var peer: StreamPeerTCP = _tcp_socket.take_connection()
+		
+		_connected_tcp_peers.append(peer)
+		_tcp_buffers[peer] = PackedByteArray()
 	
 	for peer: StreamPeerTCP in _connected_tcp_peers.duplicate():
 		peer.poll()
 		
 		if peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
 			_connected_tcp_peers.erase(peer)
+			_tcp_buffers.erase(peer)
+			
+			continue
 		
-		elif peer.get_available_bytes():
-			_handle_packet(peer.get_data(peer.get_available_bytes()))
+		while peer.get_available_bytes() > 0:
+			_tcp_buffers[peer].append_array(peer.get_data(peer.get_available_bytes())[1])
+			var packet: PackedByteArray = _tcp_buffers[peer]
+			
+			while ConstaNetHeadder.is_packet_valid(packet):
+				var length: int = ConstaNetHeadder.ba_to_int(packet, 1, 8)
+				
+				if length <= 0 or packet.size() < length:
+					break
+				
+				var sliced_packet: PackedByteArray = packet.slice(0, length)
+				_handle_packet(sliced_packet)
+				packet = packet.slice(length)
+			
+			if not ConstaNetHeadder.is_packet_valid(packet):
+				_tcp_buffers[peer].clear()
 	
 	for incomming_multi_part: IncommingMultiPart in _active_multi_parts.values():
 		if incomming_multi_part.is_complete():
@@ -684,13 +707,17 @@ class IncommingMultiPart extends Object:
 		id = p_multi_part.multi_part_id
 		num_of_chunks = p_multi_part.num_of_chunks
 		
+		print("New multipart")
 		store_multi_part(p_multi_part)
+		
 	
 	
 	## Stores a chunk of data from a ConstaNetMultiPart
 	func store_multi_part(p_multi_part: ConstaNetMultiPart) -> void:
 		chunks[p_multi_part.chunk_id] = p_multi_part.data
 		last_seen = Time.get_unix_time_from_system()
+		
+		print("Multipart adding chunk (", chunks.size(), "/", num_of_chunks, ")")
 	
 	
 	## Gets all data that has been sent

@@ -33,41 +33,6 @@ const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
 
 
-## ConstellationConfig object
-class ConstellationConfig extends Object:
-	## Defines a custom callable to call when logging infomation
-	static var custom_loging_method: Callable = Callable()
-	
-	## Defines a custom callable to call when logging infomation verbosely
-	static var custom_loging_method_verbose: Callable = Callable()
-	
-	## A String prefix to print before all message logs
-	static var log_prefix: String = ""
-	
-	## Default address to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
-	static var bind_address: String = "127.0.0.1"
-	
-	## Default port to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
-	static var bind_interface: String = "lo"
-	
-	## Loads config from a file
-	static func load_config(p_path: String) -> bool:
-		var script: Variant = load(p_path)
-		
-		if script is not GDScript or script.get("config") is not Dictionary:
-			return false
-		
-		var config: Dictionary = script.get("config")
-		
-		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
-		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
-		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
-		bind_address = type_convert(config.get("bind_address", bind_address), TYPE_STRING)
-		bind_interface = type_convert(config.get("bind_interface", bind_address), TYPE_STRING)
-		
-		return true
-
-
 ## The primary TCP server to use
 var _tcp_socket: TCPServer = TCPServer.new()
 
@@ -140,6 +105,10 @@ func _init() -> void:
 		_role_flags = RoleFlags.CONTROLLER
 		_local_node._set_role_flags(_role_flags)
 	
+	if cli_args.has("--ctl-executor"):
+		_role_flags = RoleFlags.EXECUTOR
+		_local_node._set_role_flags(_role_flags)
+	
 	if cli_args.has("--ctl-node-id"):
 		_local_node._set_node_id(str(cli_args[cli_args.find("--ctl-node-id") + 1]))
 	
@@ -157,34 +126,13 @@ func _process(delta: float) -> void:
 		_handle_packet(_mcast_rx.get_packet())
 	
 	while _tcp_socket.is_connection_available():
-		var peer: StreamPeerTCP = _tcp_socket.take_connection()
-		
-		print("Accepted new TCP Peer")
-		_connected_tcp_peers.append(peer)
-		_tcp_buffers[peer] = PackedByteArray()
+		_handle_incoming_tcp_connection()
 	
 	for peer: StreamPeerTCP in _connected_tcp_peers.duplicate():
-		peer.poll()
-		
-		if peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
-			print("Removing Peer")
-			_connected_tcp_peers.erase(peer)
-			_tcp_buffers.erase(peer)
-		
-		else:
-			while peer.get_available_bytes() > 0:
-				_handle_packet_frame(peer)
+		_process_stream_peer(peer)
 	
-	for incomming_multi_part: IncommingMultiPart in _active_multi_parts.values():
-		if incomming_multi_part.is_complete():
-			_handle_packet(incomming_multi_part.get_data())
-			_active_multi_parts.erase(incomming_multi_part.id)
-			incomming_multi_part.free()
-		
-		elif Time.get_unix_time_from_system() - incomming_multi_part.last_seen > MULTI_PART_MAX_WAIT:
-			_logv("Dropping multipart ", incomming_multi_part.id, " due to timeout")
-			_active_multi_parts.erase(incomming_multi_part.id)
-			incomming_multi_part.free()
+	for multi_part: IncommingMultiPart in _active_multi_parts.values():
+		_process_multi_part(multi_part)
 
 
 ## Starts the node
@@ -192,6 +140,7 @@ func start_node() -> Error:
 	if _network_state != NetworkState.OFFLINE:
 		return ERR_ALREADY_EXISTS
 	
+	_log("Starting Node")
 	stop_node(true)
 	_set_network_state(NetworkState.INITIALIZING)
 	
@@ -211,7 +160,7 @@ func start_node() -> Error:
 ## Stops the node
 func stop_node(p_internal_only: bool = false) -> Error:
 	if not p_internal_only:
-		_log("Shutting Down")
+		_log("Stopping Down")
 		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
 	
 	_close_network()
@@ -232,7 +181,6 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_disco_timer.stop()
 	
 	_set_network_state(NetworkState.OFFLINE)
-	_log("NetworkState: OFFLINE")
 	return OK
 
 
@@ -242,6 +190,70 @@ func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter =
 		return ERR_UNAVAILABLE
 	
 	return _local_node.get_session().send_command(p_command, p_node_filter, p_nodes)
+
+
+## Creates and joins a new session
+func create_session(p_name: String) -> NetworkSession:
+	if not p_name or _network_state != NetworkState.READY:
+		return null
+	
+	var session: ConstellationSession = ConstellationSession.new()
+	
+	session._set_name(p_name)
+	session._set_session_master(_local_node)
+	session._add_node(_local_node)
+	
+	_known_sessions[session.get_session_id()] = session
+	session.request_delete.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
+	session_created.emit(session)
+	
+	_send_session_anouncement(session)
+	return session
+
+
+## Joins a pre-existing session on the network
+func join_session(p_session: NetworkSession) -> bool:
+	if not p_session:
+		leave_session()
+		return false
+	
+	if _local_node.get_session():
+		leave_session()
+	
+	for node: ConstellationNode in p_session.get_nodes():
+		node.connect_tcp()
+	
+	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
+	
+	message.origin_id = get_node_id()
+	message.session_id = p_session.get_session_id()
+	message.set_request(true)
+	
+	_local_node._set_session(p_session)
+	_send_message_mcast(message)
+	
+	return true
+
+
+## Leaves a session 
+func leave_session() -> bool:
+	if not _local_node.get_session():
+		return false
+	
+	var message: ConstaNetSessionLeave = ConstaNetSessionLeave.new()
+	var session: ConstellationSession = _local_node.get_session()
+	_local_node._leave_session()
+	
+	message.origin_id = get_node_id()
+	message.session_id = session.get_session_id()
+	message.set_request(true)
+	
+	_send_message_mcast(message)
+	
+	for node: ConstellationNode in session.get_nodes():
+		node.disconnect_tcp()
+	
+	return true
 
 
 ## Returns a list of all known nodes
@@ -341,66 +353,13 @@ func get_node_array(p_from: ConstaNetSessionAnnounce, p_create_unknown: bool = f
 	return typed_array
 
 
-## Creates and joins a new session
-func create_session(p_name: String) -> NetworkSession:
-	if not p_name or _network_state != NetworkState.READY:
-		return null
-	
-	var session: ConstellationSession = ConstellationSession.new()
-	
-	session._set_name(p_name)
-	session._set_session_master(_local_node)
-	session._add_node(_local_node)
-	
-	_known_sessions[session.get_session_id()] = session
-	session.request_delete.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
-	session_created.emit(session)
-	
-	_send_session_anouncement(session)
-	return session
-
-
-## Joins a pre-existing session on the network
-func join_session(p_session: NetworkSession) -> bool:
-	if not p_session:
-		leave_session()
+## Sets the network state
+func _set_network_state(p_network_state: NetworkState) -> bool:
+	if p_network_state == _network_state:
 		return false
 	
-	if _local_node.get_session():
-		leave_session()
-	
-	for node: ConstellationNode in p_session.get_nodes():
-		node.connect_tcp()
-	
-	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
-	
-	message.origin_id = get_node_id()
-	message.session_id = p_session.get_session_id()
-	message.set_request(true)
-	
-	_local_node._set_session(p_session)
-	_send_message_mcast(message)
-	
-	return true
-
-
-## Leaves a session 
-func leave_session() -> bool:
-	if not _local_node.get_session():
-		return false
-	
-	var message: ConstaNetSessionLeave = ConstaNetSessionLeave.new()
-	var session: ConstellationSession = _local_node.get_session()
-	_local_node._leave_session()
-	
-	message.origin_id = get_node_id()
-	message.session_id = session.get_session_id()
-	message.set_request(true)
-	
-	_send_message_mcast(message)
-	
-	for node: ConstellationNode in session.get_nodes():
-		node.disconnect_tcp()
+	_network_state = p_network_state
+	network_state_changed.emit(_network_state, _network_state_err_code if _network_state == NetworkState.ERROR else OK)
 	
 	return true
 
@@ -478,6 +437,19 @@ func _close_network() -> void:
 	set_process(false)
 
 
+## Starts the discovery stage
+func _begin_discovery() -> void:
+	_disco_timer.wait_time = DISCO_TIMEOUT
+	
+	if not _disco_timer.timeout.is_connected(_on_disco_timeout):
+		_disco_timer.autostart = true
+		_disco_timer.timeout.connect(_on_disco_timeout)
+		add_child(_disco_timer)
+	
+	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
+	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
+
+
 func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetDiscovery:
 	var message: ConstaNetDiscovery = ConstaNetDiscovery.new()
 	
@@ -549,22 +521,8 @@ func _send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOU
 	return _send_message_mcast(message)
 
 
-## Starts the discovery stage
-func _begin_discovery() -> void:
-	_disco_timer.wait_time = DISCO_TIMEOUT
-	
-	if not _disco_timer.timeout.is_connected(_on_disco_timeout):
-		_disco_timer.autostart = true
-		_disco_timer.timeout.connect(_on_disco_timeout)
-		add_child(_disco_timer)
-	
-	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
-	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
-
-
 ## Handles a frame pulled from a network stream
 func _handle_packet_frame(p_peer: StreamPeerTCP) -> void:
-	_log("Handling packet frame")
 	_tcp_buffers.get_or_add(p_peer, PackedByteArray()).append_array(p_peer.get_data(p_peer.get_available_bytes())[1])
 	var packet: PackedByteArray = _tcp_buffers[p_peer]
 	
@@ -597,63 +555,32 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 	
 	match p_message.type:
 		MessageType.DISCOVERY:
-			_handle_discovery_message(p_message)
-			
-			if is_instance_valid(p_source):
-				if p_message.is_request():
-					var origin_node: ConstellationNode = get_node_from_id(p_message.origin_id)
-					
-					if is_instance_valid(origin_node):
-						origin_node._use_stream(p_source)
-						origin_node._send_tcp_discovery_acknowledment()
-						origin_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-				
-				elif p_message.is_acknowledgment():
-					_local_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-			
-			elif p_message.is_request():
-				_send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
+			_handle_discovery_message(p_message, p_source)
 		
 		MessageType.SESSION_DISCOVERY:
-			for p_session: ConstellationSession in _known_sessions.values():
-				if p_session.get_session_master() == _local_node:
-					_send_session_anouncement(p_session, ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
+			_handle_session_discovery(p_message)
 		
 		MessageType.SESSION_ANNOUNCE:
 			_handle_session_announce_message(p_message)
 		
 		MessageType.SESSION_SET_PRIORITY:
-			var node: ConstellationNode = get_node_from_id(p_message.node_id)
-			var session: ConstellationSession = get_session_from_id(p_message.session_id)
-			
-			if node and session:
-				session._set_priority_order(node, p_message.position)
+			_handle_session_set_priority(p_message)
 		
 		MessageType.SESSION_SET_MASTER:
-			var node: ConstellationNode = get_node_from_id(p_message.node_id)
-			var session: ConstellationSession = get_session_from_id(p_message.session_id)
-			
-			if node and session:
-				session._set_session_master(node)
+			_handle_session_set_master(p_message)
 		
 		MessageType.MULTI_PART:
-			p_message = p_message as ConstaNetMultiPart
-			
-			if _active_multi_parts.has(p_message.multi_part_id):
-				_active_multi_parts[p_message.multi_part_id].store_multi_part(p_message)
-				
-			else:
-				_active_multi_parts[p_message.multi_part_id] = IncommingMultiPart.new(p_message)
+			_handle_multi_part(p_message)
 	
 	if p_message.target_id == get_node_id():
-		_local_node.handle_message(p_message)
+		_local_node._handle_message(p_message)
 	
 	elif not p_message.target_id and p_message.origin_id in _known_nodes:
-		_known_nodes[p_message.origin_id].handle_message(p_message)
+		_known_nodes[p_message.origin_id]._handle_message(p_message)
 
 
 ## Handles a discovery message
-func _handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
+func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: StreamPeerTCP = null) -> void:
 	if p_discovery.origin_id not in _known_nodes:
 		var node: ConstellationNode
 		
@@ -671,6 +598,28 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
 		_known_nodes[p_discovery.origin_id] = node
 		add_child(node)
 		node_found.emit(node)
+	
+	if is_instance_valid(p_source):
+		if p_discovery.is_request():
+			var origin_node: ConstellationNode = get_node_from_id(p_discovery.origin_id)
+			
+			if is_instance_valid(origin_node):
+				origin_node._use_stream(p_source)
+				origin_node._send_tcp_discovery_acknowledment()
+				origin_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+		
+		elif p_discovery.is_acknowledgment():
+			_local_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+	
+	elif p_discovery.is_request():
+		_send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
+
+
+## Handles a ConstaNetSessionDiscovery
+func _handle_session_discovery(p_session_discovery: ConstaNetSessionDiscovery) -> void:
+	for p_session: ConstellationSession in _known_sessions.values():
+		if p_session.get_session_master() == _local_node:
+			_send_session_anouncement(p_session, ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 
 
 ## Handles a session announce message
@@ -698,15 +647,72 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 		session_created.emit(session)
 
 
-## Sets the network state
-func _set_network_state(p_network_state: NetworkState) -> bool:
-	if p_network_state == _network_state:
+## Handles a ConstaNetSessionSetPriority
+func _handle_session_set_priority(p_session_set_priority: ConstaNetSessionSetPriority) -> void:
+	var node: ConstellationNode = get_node_from_id(p_session_set_priority.node_id)
+	var session: ConstellationSession = get_session_from_id(p_session_set_priority.session_id)
+	
+	if is_instance_valid(node) and is_instance_valid(session):
+		session._set_priority_order(node, p_session_set_priority.position)
+
+
+## Handles a ConstaNetSessionSetMaster
+func _handle_session_set_master(p_session_set_master: ConstaNetSessionSetMaster) -> void:
+	var node: ConstellationNode = get_node_from_id(p_session_set_master.node_id)
+	var session: ConstellationSession = get_session_from_id(p_session_set_master.session_id)
+	
+	if is_instance_valid(node) and is_instance_valid(session):
+		session._set_session_master(node)
+
+
+## Handles ConstaNetMultiPart
+func _handle_multi_part(p_multi_part: ConstaNetMultiPart) -> void:
+	if _active_multi_parts.has(p_multi_part.multi_part_id):
+		_active_multi_parts[p_multi_part.multi_part_id].store_multi_part(p_multi_part)
+		
+	else:
+		_active_multi_parts[p_multi_part.multi_part_id] = IncommingMultiPart.new(p_multi_part)
+
+
+## Handles an incoming TCP connection
+func _handle_incoming_tcp_connection() -> bool:
+	var peer: StreamPeerTCP = _tcp_socket.take_connection()
+	
+	if not is_instance_valid(peer):
 		return false
 	
-	_network_state = p_network_state
-	network_state_changed.emit(_network_state, _network_state_err_code if _network_state == NetworkState.ERROR else OK)
+	_connected_tcp_peers.append(peer)
+	_tcp_buffers[peer] = PackedByteArray()
 	
+	_logv("Accepted new TCP Peer from: ", peer.get_connected_host(), ":", peer.get_connected_port())
 	return true
+
+
+## Processes a StreamPeerTCP for data
+func _process_stream_peer(p_peer: StreamPeerTCP) -> void:
+	p_peer.poll()
+		
+	if p_peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
+		_logv("Disconnecting TCP Peer from: ", p_peer.get_connected_host(), ":", p_peer.get_connected_port())
+		_connected_tcp_peers.erase(p_peer)
+		_tcp_buffers.erase(p_peer)
+	
+	else:
+		while p_peer.get_available_bytes() > 0:
+			_handle_packet_frame(p_peer)
+
+
+## Processes a IncommingMultiPart
+func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
+	if p_multi_part.is_complete():
+		_handle_packet(p_multi_part.get_data())
+		_active_multi_parts.erase(p_multi_part.id)
+		p_multi_part.free()
+	
+	elif Time.get_unix_time_from_system() - p_multi_part.last_seen > MULTI_PART_MAX_WAIT:
+		_logv("Dropping multipart ", p_multi_part.id, " due to timeout")
+		_active_multi_parts.erase(p_multi_part.id)
+		p_multi_part.free()
 
 
 ## Called when the discovery timer times out
@@ -717,6 +723,41 @@ func _on_disco_timeout() -> void:
 ## Called when the sessions is to be deleted after all nodes disconnect
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	_known_sessions.erase(p_session.get_session_id())
+
+
+## ConstellationConfig object
+class ConstellationConfig extends Object:
+	## Defines a custom callable to call when logging infomation
+	static var custom_loging_method: Callable = Callable()
+	
+	## Defines a custom callable to call when logging infomation verbosely
+	static var custom_loging_method_verbose: Callable = Callable()
+	
+	## A String prefix to print before all message logs
+	static var log_prefix: String = ""
+	
+	## Default address to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	static var bind_address: String = "127.0.0.1"
+	
+	## Default port to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	static var bind_interface: String = "lo"
+	
+	## Loads config from a file
+	static func load_config(p_path: String) -> bool:
+		var script: Variant = load(p_path)
+		
+		if script is not GDScript or script.get("config") is not Dictionary:
+			return false
+		
+		var config: Dictionary = script.get("config")
+		
+		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
+		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
+		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
+		bind_address = type_convert(config.get("bind_address", bind_address), TYPE_STRING)
+		bind_interface = type_convert(config.get("bind_interface", bind_address), TYPE_STRING)
+		
+		return true
 
 
 ## Class to repersent an incomming multipart message

@@ -125,8 +125,8 @@ func _init() -> void:
 ## Called each frame
 func _process(delta: float) -> void:
 	_tcp_socket.poll()
-	
 	var status: StreamPeerTCP.Status = _tcp_socket.get_status()
+	
 	if status != _tcp_previous_status:
 		_tcp_previous_status = status
 		
@@ -141,20 +141,18 @@ func _process(delta: float) -> void:
 				_set_connection_status(ConnectionState.CONNECTING)
 			
 			StreamPeerTCP.Status.STATUS_CONNECTED:
-				_set_connection_status(ConnectionState.CONNECTED)
+				_send_tcp_discovery_request()
 			
 			StreamPeerTCP.Status.STATUS_ERROR:
 				_set_connection_status(ConnectionState.LOST_CONNECTION)
 	
-	if status == StreamPeerTCP.STATUS_CONNECTED and _tcp_socket.get_available_bytes():
-		var data: Array = _tcp_socket.get_data(_tcp_socket.get_available_bytes())
-		var packet: PackedByteArray = data[1]
-		
-		_network.handle_packet(packet)
+	if status == StreamPeerTCP.STATUS_CONNECTED:
+		while _tcp_socket.get_available_bytes() > 0:
+			_network._handle_packet_frame(_tcp_socket)
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
-func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int) -> ConstaNetHeadder:
+func auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int = Flags.NONE) -> ConstaNetHeadder:
 	p_headder.origin_id = _network.get_node_id()
 	p_headder.flags |= p_flags
 	
@@ -184,10 +182,6 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 				_set_session(_network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_JOIN:
-			var session: ConstellationSession = _network.get_session_from_id(p_message.session_id)
-			if session == _network.get_local_node().get_session():
-				connect_tcp()
-			
 			_set_session(_network.get_session_from_id(p_message.session_id, true))
 		
 		MessageType.SESSION_LEAVE:
@@ -227,6 +221,9 @@ func handle_message(p_message: ConstaNetHeadder) -> void:
 
 ## Updates this nodes info from a discovery packet
 func update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
+	if p_discovery.target_id:
+		return
+	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)
 	
@@ -493,6 +490,10 @@ func _set_role_flags(p_role_flags: int) -> bool:
 
 ## Sets the connection status
 func _set_connection_status(p_status: ConnectionState) -> bool:
+	if _connection_state == p_status:
+		return false
+	
+	_network._logv("Setting ConnectionState to remote node: ", get_node_name(), ", to: ", ConnectionState.keys()[p_status])
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
 	
@@ -513,6 +514,7 @@ func _set_node_name(p_node_name: String) -> bool:
 	if p_node_name == _node_name:
 		return false
 	
+	_network._logv("Changing name from: ", get_node_name(), ", tp: ", p_node_name)
 	_node_name = p_node_name
 	node_name_changed.emit(_node_name)
 	
@@ -589,3 +591,35 @@ func _mark_as_unknown(p_unknown: bool) -> void:
 		_node_flags |= NodeFlags.UNKNOWN
 	else:
 		_node_flags &= ~NodeFlags.UNKNOWN
+
+
+## Sends a Discovery Flags.REQUEST to the remote node over TCP
+func _send_tcp_discovery_request() -> void:
+	if is_local():
+		breakpoint
+	
+	var message: ConstaNetDiscovery = auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
+	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
+	
+	_network._logv("Sending TCP Discovery REQ, errcode: ", error_string(errcode), ", to: ", get_node_name())
+
+
+## Sends a Discovery Flags.ACKNOWLEDGMENT to the remote node over TCP
+func _send_tcp_discovery_acknowledment() -> void:
+	if is_local():
+		breakpoint
+	
+	var message: ConstaNetDiscovery = auto_fill_headder(_network._create_discovery(), Flags.ACKNOWLEDGMENT)
+	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
+	
+	_network._logv("Sending TCP Discovery ACK, errcode: ", error_string(errcode), ", to: ", get_node_name())
+
+
+## Changed the TCP stream that is used to comunicate to the remote node
+func _use_stream(p_stream: StreamPeerTCP) -> void:
+	if _tcp_socket == p_stream:
+		return
+	
+	_network._logv("Changing TCP stream object for: ", get_node_name())
+	_tcp_socket.disconnect_from_host()
+	_tcp_socket = p_stream

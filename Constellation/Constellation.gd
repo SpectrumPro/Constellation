@@ -159,6 +159,7 @@ func _process(delta: float) -> void:
 	while _tcp_socket.is_connection_available():
 		var peer: StreamPeerTCP = _tcp_socket.take_connection()
 		
+		print("Accepted new TCP Peer")
 		_connected_tcp_peers.append(peer)
 		_tcp_buffers[peer] = PackedByteArray()
 	
@@ -166,27 +167,13 @@ func _process(delta: float) -> void:
 		peer.poll()
 		
 		if peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
+			print("Removing Peer")
 			_connected_tcp_peers.erase(peer)
 			_tcp_buffers.erase(peer)
-			
-			continue
 		
-		while peer.get_available_bytes() > 0:
-			_tcp_buffers[peer].append_array(peer.get_data(peer.get_available_bytes())[1])
-			var packet: PackedByteArray = _tcp_buffers[peer]
-			
-			while ConstaNetHeadder.is_packet_valid(packet):
-				var length: int = ConstaNetHeadder.ba_to_int(packet, 1, 8)
-				
-				if length <= 0 or packet.size() < length:
-					break
-				
-				var sliced_packet: PackedByteArray = packet.slice(0, length)
-				_handle_packet(sliced_packet)
-				packet = packet.slice(length)
-			
-			if not ConstaNetHeadder.is_packet_valid(packet):
-				_tcp_buffers[peer].clear()
+		else:
+			while peer.get_available_bytes() > 0:
+				_handle_packet_frame(peer)
 	
 	for incomming_multi_part: IncommingMultiPart in _active_multi_parts.values():
 		if incomming_multi_part.is_complete():
@@ -418,22 +405,27 @@ func leave_session() -> bool:
 	return true
 
 
+## Gets the custom log prefix with node name
+func _get_log_prefix() -> String:
+	return str(ConstellationConfig.log_prefix, " (", _local_node.get_node_name(), "): ")
+
+
 ## Logs to the console
 func _log(...args) -> void:
 	if ConstellationConfig.custom_loging_method.is_valid():
-		ConstellationConfig.custom_loging_method.callv([ConstellationConfig.log_prefix] + args)
+		ConstellationConfig.custom_loging_method.callv([_get_log_prefix()] + args)
 	
 	else:
-		print(ConstellationConfig.log_prefix, "".join(args))
+		print(_get_log_prefix(), "".join(args))
 
 
 ## Logs to the console verbose
 func _logv(...args) -> void:
 	if ConstellationConfig.custom_loging_method_verbose.is_valid():
-		ConstellationConfig.custom_loging_method_verbose.callv([ConstellationConfig.log_prefix] + args)
+		ConstellationConfig.custom_loging_method_verbose.callv([_get_log_prefix()] + args)
 	
 	else:
-		print_verbose(ConstellationConfig.log_prefix, "".join(args))
+		print_verbose(_get_log_prefix(), "".join(args))
 
 
 ## Starts this node, opens network connection
@@ -486,6 +478,21 @@ func _close_network() -> void:
 	set_process(false)
 
 
+func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetDiscovery:
+	var message: ConstaNetDiscovery = ConstaNetDiscovery.new()
+	
+	message.origin_id = get_node_id()
+	message.target_id = p_target_id
+	message.node_name = get_node_name()
+	message.node_ip = ConstellationConfig.bind_address
+	message.role_flags = _role_flags
+	message.tcp_port = _tcp_port
+	message.udp_port = _udp_port
+	message.flags |= p_flags
+	
+	return message
+
+
 ## Sends a message to UDP Broadcast
 func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	if _network_state == NetworkState.OFFLINE:
@@ -499,20 +506,12 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 
 ## Sends a discovery message to broadcasr
 func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
-	var packet: ConstaNetDiscovery = ConstaNetDiscovery.new()
-	
-	packet.origin_id = get_node_id()
-	packet.node_name = get_node_name()
-	packet.node_ip = ConstellationConfig.bind_address
-	packet.role_flags = _role_flags
-	packet.tcp_port = _tcp_port
-	packet.udp_port = _udp_port
-	packet.flags |= p_flags
+	var message: ConstaNetDiscovery = _create_discovery(p_flags)
 	
 	if _network_state == NetworkState.READY:
 		_disco_timer.start(DISCO_TIMEOUT)
 	
-	return _send_message_mcast(packet)
+	return _send_message_mcast(message)
 
 
 ## Sends a session discovery message to broadcast
@@ -563,25 +562,57 @@ func _begin_discovery() -> void:
 	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
+## Handles a frame pulled from a network stream
+func _handle_packet_frame(p_peer: StreamPeerTCP) -> void:
+	_log("Handling packet frame")
+	_tcp_buffers.get_or_add(p_peer, PackedByteArray()).append_array(p_peer.get_data(p_peer.get_available_bytes())[1])
+	var packet: PackedByteArray = _tcp_buffers[p_peer]
+	
+	while ConstaNetHeadder.is_packet_valid(packet):
+		var length: int = ConstaNetHeadder.ba_to_int(packet, 1, 8)
+		
+		if length <= 0 or packet.size() < length:
+			break
+		
+		var sliced_packet: PackedByteArray = packet.slice(0, length)
+		_handle_packet(sliced_packet, p_peer)
+		packet = packet.slice(length)
+	
+	if not ConstaNetHeadder.is_packet_valid(packet):
+		_tcp_buffers[p_peer].clear() 
+
+
 ## Handles a packet as a PackedByteArray
-func _handle_packet(p_packet: PackedByteArray) -> void:
+func _handle_packet(p_packet: PackedByteArray, p_source: StreamPeerTCP = null) -> void:
 	var message: ConstaNetHeadder = ConstaNetHeadder.phrase_packet(p_packet)
 	
 	if message.is_valid() and message.origin_id != _local_node.get_node_id():
-		_handle_message(message)
+		_handle_message(message, p_source)
 
 
 ## Handles an incomming message, 
-func _handle_message(p_message: ConstaNetHeadder) -> void:
+func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null) -> void:
 	if p_message.target_id and p_message.target_id != get_node_id():
 		return
-	
-	if p_message.type == MessageType.DISCOVERY and p_message.flags & ConstaNetHeadder.Flags.REQUEST:
-		_send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 	
 	match p_message.type:
 		MessageType.DISCOVERY:
 			_handle_discovery_message(p_message)
+			
+			if is_instance_valid(p_source):
+				if p_message.is_request():
+					var origin_node: ConstellationNode = get_node_from_id(p_message.origin_id)
+					
+					if is_instance_valid(origin_node):
+						origin_node._use_stream(p_source)
+						origin_node._send_tcp_discovery_acknowledment()
+						origin_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+				
+				elif p_message.is_acknowledgment():
+					_local_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+			
+			elif p_message.is_request():
+				_send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
 		
 		MessageType.SESSION_DISCOVERY:
 			for p_session: ConstellationSession in _known_sessions.values():
@@ -625,6 +656,7 @@ func _handle_message(p_message: ConstaNetHeadder) -> void:
 func _handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
 	if p_discovery.origin_id not in _known_nodes:
 		var node: ConstellationNode
+		
 		if p_discovery.origin_id in _unknown_nodes:
 			node = _unknown_nodes[p_discovery.origin_id]
 			node._mark_as_unknown(false)
@@ -632,11 +664,10 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery) -> void:
 			
 			_unknown_nodes.erase(p_discovery.origin_id)
 			_log("Using unknown node: ", node.get_node_id())
-			
 		
 		else:
 			node = ConstellationNode.create_from_discovery(p_discovery)
-			
+		
 		_known_nodes[p_discovery.origin_id] = node
 		add_child(node)
 		node_found.emit(node)
@@ -709,7 +740,6 @@ class IncommingMultiPart extends Object:
 		
 		print("New multipart")
 		store_multi_part(p_multi_part)
-		
 	
 	
 	## Stores a chunk of data from a ConstaNetMultiPart

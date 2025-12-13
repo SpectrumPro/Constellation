@@ -332,7 +332,7 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 	if _network.get_local_node() not in _nodes:
 		return
 	
-	prints(p_node.get_node_name(), "Connection State Changed To:", ConstellationNode.ConnectionState.keys()[p_connection_state], "In Sesion", get_name(), "From Node:", _network.get_local_node().get_node_name())
+	_network._logv("ConnectionState of: ", p_node.get_node_name(), ", changed to: ", ConstellationNode.ConnectionState.keys()[p_connection_state])
 	
 	match p_connection_state:
 		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:

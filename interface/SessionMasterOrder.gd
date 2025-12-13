@@ -91,7 +91,6 @@ func _on_session_request_delete(p_session: ConstellationSession) -> void:
 
 ## Called when a node joins the session
 func _on_session_node_joined(p_node: ConstellationNode, p_session: ConstellationSession) -> void:
-	prints(p_node.get_node_name(),  "Joined:",  p_session.get_name())
 	if p_session == _session:
 		_reload_tree(_session)
 

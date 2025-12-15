@@ -46,12 +46,22 @@ func set_type(p_type: IP.Type) -> bool:
 	return true
 
 
-## Sets the IP address of this IPAddr
+## Sets the IP address of this IPAddr, also sets the address type
 func set_address(p_address: String) -> bool:
 	if p_address == _address:
 		return false
 	
 	_address = p_address
+	
+	if not _address:
+		set_type(IP.Type.TYPE_NONE)
+	
+	elif _address.contains(":"):
+		set_type(IP.Type.TYPE_IPV6)
+	
+	else:
+		set_type(IP.Type.TYPE_IPV4)
+	
 	return true
 
 
@@ -77,3 +87,8 @@ func get_address() -> String:
 ## Gets the interface name of this IPAddr
 func get_interface() -> String:
 	return _interface
+
+
+## Convers this IPAddr to a string
+func _to_string() -> String:
+	return _interface + ":" + _address

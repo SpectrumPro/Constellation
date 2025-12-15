@@ -107,6 +107,12 @@ func _init() -> void:
 	if cli_args.has("--ctl-node-name"):
 		_local_node._set_node_name(str(cli_args[cli_args.find("--ctl-node-name") + 1]))
 	
+	if cli_args.has("--ctl-address"):
+		ConstellationConfig.bind_address = str(cli_args[cli_args.find("--ctl-address") + 1])
+	
+	if cli_args.has("--ctl-interface"):
+		ConstellationConfig.bind_interface = str(cli_args[cli_args.find("--ctl-interface") + 1])
+	
 	if cli_args.has("--ctl-controler"):
 		_role_flags = RoleFlags.CONTROLLER
 		_local_node._set_role_flags(_role_flags)
@@ -802,10 +808,7 @@ class ConstellationConfig extends Object:
 	
 	## Loads (or creates if not already) the user config override
 	static func load_user_config() -> Error:
-		var error: Error = _config_access.load(get_user_config_path())
-		
-		if error:
-			return error
+		_config_access.load(get_user_config_path())
 		
 		bind_address = type_convert(_config_access.get_value("Network", "bind_address", bind_address), TYPE_STRING)
 		bind_interface = type_convert(_config_access.get_value("Network", "bind_interface", bind_interface), TYPE_STRING)

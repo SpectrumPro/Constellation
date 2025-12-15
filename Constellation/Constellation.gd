@@ -5,6 +5,10 @@ class_name Constellation extends NetworkHandler
 ## NetworkHandler for the Constellation Network Engine
 
 
+## Emited when the IP or interface name is changed
+signal ip_and_interface_changed(ipaddr: IPAddr)
+
+
 ## The Multicast group
 const MCAST_GROUP: String = "239.38.23.1"
 
@@ -61,7 +65,7 @@ var _tcp_buffers: Dictionary[StreamPeerTCP, PackedByteArray]
 var _role_flags: int = RoleFlags.EXECUTOR
 
 ## The ConstellationNode for the local node
-var _local_node: ConstellationNode = ConstellationNode.create_local_node()
+var _local_node: ConstellationNode
 
 ## All known network session
 var _known_sessions: Dictionary[String, ConstellationSession]
@@ -87,15 +91,17 @@ func _init() -> void:
 	ConstellationNode._network = self
 	ConstellationSession._network = self
 	
-	set_process(false)
-	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
-	
-	_handler_name = "Constellation"
-	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
-	
+	_local_node = ConstellationNode.create_local_node()
 	_local_node._set_node_ip(ConstellationConfig.bind_address)
 	_local_node._set_node_name("LocalNode")
 	add_child(_local_node)
+	
+	set_process(false)
+	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
+	ConstellationConfig.load_user_config()
+	
+	_handler_name = "Constellation"
+	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):
@@ -180,7 +186,7 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	
 	_disco_timer.stop()
 	
-	_set_network_state(NetworkState.OFFLINE)
+	_set_network_state(NetworkState.OFFLINE)	
 	return OK
 
 
@@ -254,6 +260,23 @@ func leave_session() -> bool:
 		node.disconnect_tcp()
 	
 	return true
+
+
+## Sets the IP and interface name from an IPAddr object
+func set_ip_and_interface(p_ipaddr: IPAddr) -> void:
+	if not p_ipaddr.is_valid():
+		return
+	
+	ConstellationConfig.bind_address = p_ipaddr.get_address()
+	ConstellationConfig.bind_interface = p_ipaddr.get_interface()
+	
+	ip_and_interface_changed.emit(get_ip_and_interface())
+	ConstellationConfig.save_user_config()
+
+
+## Returns the IP and interface name as a IPAddr object
+func get_ip_and_interface() -> IPAddr:
+	return IPAddr.new(IP.Type.TYPE_ANY, ConstellationConfig.bind_address, ConstellationConfig.bind_interface)
 
 
 ## Returns a list of all known nodes
@@ -742,6 +765,16 @@ class ConstellationConfig extends Object:
 	## Default port to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
 	static var bind_interface: String = "lo"
 	
+	## File location for a user config override
+	static var user_config_file_location: String = "user://"
+	
+	## File name for the user config file
+	static var user_config_file_name: String = "constellation.conf"
+	
+	## The ConfigFile object to access the user config file 
+	static var _config_access: ConfigFile
+	
+	
 	## Loads config from a file
 	static func load_config(p_path: String) -> bool:
 		var script: Variant = load(p_path)
@@ -754,11 +787,48 @@ class ConstellationConfig extends Object:
 		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
 		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
 		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
+		
 		bind_address = type_convert(config.get("bind_address", bind_address), TYPE_STRING)
 		bind_interface = type_convert(config.get("bind_interface", bind_address), TYPE_STRING)
 		
+		user_config_file_location = type_convert(config.get("user_config_file_location", user_config_file_location), TYPE_STRING)
+		user_config_file_name = type_convert(config.get("user_config_file_name", user_config_file_name), TYPE_STRING)
+		
+		DirAccess.make_dir_recursive_absolute(user_config_file_location)
+		_config_access = ConfigFile.new()
+		
 		return true
-
+	
+	
+	## Loads (or creates if not already) the user config override
+	static func load_user_config() -> Error:
+		var error: Error = _config_access.load(get_user_config_path())
+		
+		if error:
+			return error
+		
+		bind_address = type_convert(_config_access.get_value("Network", "bind_address", bind_address), TYPE_STRING)
+		bind_interface = type_convert(_config_access.get_value("Network", "bind_interface", bind_interface), TYPE_STRING)
+		
+		save_user_config()
+		return OK
+	
+	
+	## Saves the user config to a file
+	static func save_user_config() -> Error:
+		_config_access.set_value("Network", "bind_address", bind_address)
+		_config_access.set_value("Network", "bind_interface", bind_interface)
+		
+		return _config_access.save(get_user_config_path())
+	
+	
+	## Returns the full filepath to the user config
+	static func get_user_config_path() -> String:
+		if user_config_file_location.ends_with("/"):
+			return user_config_file_location + user_config_file_name
+		else:
+			return user_config_file_location + "/" + user_config_file_name
+ 
 
 ## Class to repersent an incomming multipart message
 class IncommingMultiPart extends Object:

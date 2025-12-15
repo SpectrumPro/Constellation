@@ -36,8 +36,12 @@ enum Type {
 	NETWORKNODE,		## A NetworkNode
 	NETWORKHANDLER,		## A NetworkHandler
 	ENGINECOMPONENT,	## An EngineComponent
+	FIXTUREMANIFEST,	## An FixtureManifest
+	UIPANEL,			## A UI Panel
 	INPUTEVENT,			## An InputEvent
 	CUSTOMPANEL,		## A custom UIPanel
+	SETTINGSMANAGER,	## A SettingsManager
+	ACTION,				## An action
 }
 
 
@@ -51,13 +55,13 @@ static var custom_type_map: Dictionary[Type, Variant.Type] = {
 	Type.ARRAY: 			TYPE_ARRAY,
 	Type.DICTIONARY: 		TYPE_DICTIONARY,
 	Type.VECTOR2: 			TYPE_VECTOR2,
-	Type.VECTOR2I: 			TYPE_VECTOR2I,
+	Type.VECTOR2I: 			TYPE_VECTOR2,
 	Type.RECT2: 			TYPE_RECT2,
-	Type.RECT2I: 			TYPE_RECT2I,
+	Type.RECT2I: 			TYPE_RECT2,
 	Type.VECTOR3: 			TYPE_VECTOR3,
-	Type.VECTOR3I: 			TYPE_VECTOR3I,
+	Type.VECTOR3I: 			TYPE_VECTOR3,
 	Type.VECTOR4: 			TYPE_VECTOR4,
-	Type.VECTOR4I: 			TYPE_VECTOR4I,
+	Type.VECTOR4I: 			TYPE_VECTOR4,
 	Type.COLOR:				TYPE_COLOR,
 	Type.OBJECT: 			TYPE_OBJECT,
 	Type.CALLABLE: 			TYPE_CALLABLE,
@@ -65,11 +69,15 @@ static var custom_type_map: Dictionary[Type, Variant.Type] = {
 	Type.ENUM: 				TYPE_INT,
 	Type.BITFLAGS: 			TYPE_INT,
 	Type.NAME: 				TYPE_STRING,
-	Type.IP:				TYPE_STRING,
+	Type.IP:				TYPE_OBJECT,
 	Type.NETWORKSESSION: 	TYPE_OBJECT,
 	Type.NETWORKNODE: 		TYPE_OBJECT,
 	Type.NETWORKHANDLER: 	TYPE_OBJECT,
 	Type.ENGINECOMPONENT: 	TYPE_OBJECT,
+	Type.FIXTUREMANIFEST: 	TYPE_OBJECT,
+	Type.UIPANEL:			TYPE_OBJECT,
+	Type.CUSTOMPANEL:		TYPE_OBJECT,
+	Type.SETTINGSMANAGER:	TYPE_OBJECT,
 }
 
 

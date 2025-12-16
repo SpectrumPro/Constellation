@@ -250,7 +250,7 @@ func create_session(p_name: String) -> NetworkSession:
 
 ## Joins a pre-existing session on the network
 func join_session(p_session: NetworkSession) -> bool:
-	if not p_session:
+	if not p_session or p_session == _local_node.get_session():
 		leave_session()
 		return false
 	
@@ -629,8 +629,8 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 		MessageType.SESSION_SET_PRIORITY:
 			_handle_session_set_priority(p_message)
 		
-		MessageType.SESSION_SET_MASTER:
-			_handle_session_set_master(p_message)
+		MessageType.SESSION_SET_ATTRIBUTE:
+			_handle_session_set_attribute(p_message)
 		
 		MessageType.MULTI_PART:
 			_handle_multi_part(p_message)
@@ -723,12 +723,18 @@ func _handle_session_set_priority(p_session_set_priority: ConstaNetSessionSetPri
 
 
 ## Handles a ConstaNetSessionSetMaster
-func _handle_session_set_master(p_session_set_master: ConstaNetSessionSetMaster) -> void:
-	var node: ConstellationNode = get_node_from_id(p_session_set_master.node_id)
-	var session: ConstellationSession = get_session_from_id(p_session_set_master.session_id)
+func _handle_session_set_attribute(p_session_set_attribute: ConstaNetSessionSetAttribute) -> void:
+	var session: ConstellationSession = get_session_from_id(p_session_set_attribute.session_id)
 	
-	if is_instance_valid(node) and is_instance_valid(session):
-		session._set_session_master(node)
+	if not is_instance_valid(session):
+		return
+	
+	match p_session_set_attribute.attribute:
+		ConstaNetSessionSetAttribute.Attribute.NAME:
+			session._set_session_name(p_session_set_attribute.value)
+		
+		ConstaNetSessionSetAttribute.Attribute.MASTER:
+			session._set_session_master(get_node_from_id(p_session_set_attribute.value))
 
 
 ## Handles ConstaNetMultiPart

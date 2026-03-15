@@ -42,7 +42,7 @@ static var _network: Constellation = null
 var _role_flags: int = RoleFlags.EXECUTOR
 
 ## The NodeID of the remote node
-var _node_id: String = UUID_Util.v4()
+var _node_id: String = UUID.v4()
 
 ## The IP address of the remote node
 var _node_ip: String = ""
@@ -70,7 +70,7 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._connection_state = ConnectionState.DISCOVERED
 	node._node_id = p_disco.origin_id
 	node._role_flags = p_disco.role_flags
-	node._node_name = p_disco.node_name
+	node._name = p_disco.node_name
 	node._node_ip = p_disco.node_ip
 	node._node_udp_port = p_disco.udp_port
 	node._node_tcp_port = p_disco.tcp_port
@@ -102,26 +102,26 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 
 
 ## Init
-func _init() -> void:
-	settings_manager.set_owner(self)
-	settings_manager.set_inheritance_array(["NetworkNode", "ConstellationNode"])
+func _init(p_uuid: String = UUID.v4()) -> void:
+	super._init(p_uuid)
+	_set_class_name("ConstellationNode")
 	
-	settings_manager.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState)\
+	_settings.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState)\
 	.display("NetworkNode", 0)
 	
-	settings_manager.register_setting("Name", Data.Type.NAME, set_node_name, get_node_name, [node_name_changed])\
+	_settings.register_setting("Name", Data.Type.STRING, set_node_name, get_node_name, [name_changed])\
 	.display("NetworkNode", 1)
 	
-	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, set_session, get_session, [session_changed])\
+	_settings.register_setting("Session", Data.Type.OBJECT, set_session, get_session, [session_changed])\
 	.display("NetworkNode", 2).set_class_filter(ConstellationSession)
 	
-	settings_manager.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
+	_settings.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
 	.display("ConstellationNode", 3).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)
 	
-	settings_manager.register_setting("BindAddress", Data.Type.IP, _network.set_ip_and_interface, _network.get_ip_and_interface, [_network.ip_and_interface_changed])\
+	_settings.register_setting("BindAddress", Data.Type.IP, _network.set_ip_and_interface, _network.get_ip_and_interface, [_network.ip_and_interface_changed])\
 	.display("ConstellationNode", 4).set_display_condition(is_local)
 	
-	settings_manager.register_status("IpAddress", Data.Type.STRING, get_node_ip, [node_ip_changed])\
+	_settings.register_status("IpAddress", Data.Type.STRING, get_node_ip, [node_ip_changed])\
 	.display("ConstellationNode", 5)
 
 
@@ -211,7 +211,7 @@ func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 		var offset: int = 0
 		var chunk_id: int = 0
 		
-		multi_part.multi_part_id = UUID_Util.v4()
+		multi_part.multi_part_id = UUID.v4()
 		multi_part.num_of_chunks = int(ceil(buffer.size() / float(UDP_MTP)))
 		
 		while offset < buffer.size():
@@ -311,11 +311,6 @@ func get_node_id() -> String:
 	return _node_id
 
 
-## Gets the Node's name
-func get_node_name() -> String:
-	return _node_name
-
-
 ## Gets the Node's IP Address
 func get_node_ip() -> String:
 	return _node_ip
@@ -402,7 +397,7 @@ func _set_connection_status(p_status: ConnectionState) -> bool:
 	if _connection_state == p_status:
 		return false
 	
-	_network._logv("Setting ConnectionState to remote node: ", get_node_name(), ", to: ", ConnectionState.keys()[p_status])
+	_network._logv("Setting ConnectionState to remote node: ", get_name(), ", to: ", ConnectionState.keys()[p_status])
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
 	
@@ -420,12 +415,12 @@ func _set_node_id(p_node_id: String) -> bool:
 
 ## Sets the nodes name
 func _set_node_name(p_node_name: String) -> bool:
-	if p_node_name == _node_name:
+	if p_node_name == _name:
 		return false
 	
-	_network._logv("Changing name from: ", get_node_name(), ", tp: ", p_node_name)
-	_node_name = p_node_name
-	node_name_changed.emit(_node_name)
+	_network._logv("Changing name from: ", get_name(), ", tp: ", p_node_name)
+	_name = p_node_name
+	name_changed.emit(_name)
 	
 	return true
 
@@ -491,7 +486,7 @@ func _mark_as_session_master() -> void:
 ## Marks this node as not being the session master
 func _remove_session_master_mark() -> void:
 	_is_session_master = false
-	is_now_longer_session_master.emit()
+	is_no_longer_session_master.emit()
 
 
 ## Marks or unmarks this node as unknown
@@ -507,7 +502,7 @@ func _send_tcp_discovery_request() -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
 	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
 	
-	_network._logv("Sending TCP Discovery REQ, errcode: ", error_string(errcode), ", to: ", get_node_name())
+	_network._logv("Sending TCP Discovery REQ, errcode: ", error_string(errcode), ", to: ", get_name())
 
 
 ## Sends a Discovery Flags.ACKNOWLEDGMENT to the remote node over TCP
@@ -515,7 +510,7 @@ func _send_tcp_discovery_acknowledment() -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.ACKNOWLEDGMENT)
 	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
 	
-	_network._logv("Sending TCP Discovery ACK, errcode: ", error_string(errcode), ", to: ", get_node_name())
+	_network._logv("Sending TCP Discovery ACK, errcode: ", error_string(errcode), ", to: ", get_name())
 
 
 ## Handles a ConstaNetHeadder
@@ -651,6 +646,6 @@ func _use_stream(p_stream: StreamPeerTCP) -> void:
 	if _tcp_socket == p_stream:
 		return
 	
-	_network._logv("Changing TCP stream object for: ", get_node_name())
+	_network._logv("Changing TCP stream object for: ", get_name())
 	_tcp_socket.disconnect_from_host()
 	_tcp_socket = p_stream

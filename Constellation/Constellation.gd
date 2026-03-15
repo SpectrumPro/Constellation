@@ -87,7 +87,12 @@ var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
 
 ## Init
-func _init() -> void:
+func _init(p_uuid: String = UUID.v4()) -> void:
+	super._init(p_uuid)
+	
+	_set_class_name("Constellation")
+	set_uname("Constellaton", true)
+	
 	ConstellationNode._network = self
 	ConstellationSession._network = self
 	
@@ -100,7 +105,7 @@ func _init() -> void:
 	_local_node._set_node_name(ConstellationConfig.node_name)
 	_local_node._set_node_id(ConstellationConfig.node_id)
 	
-	_local_node.node_name_changed.connect(_on_local_node_name_changed)
+	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
 	
 	_disco_timer.set_autostart(false)
@@ -117,8 +122,7 @@ func _init() -> void:
 	add_child(_disco_timer)
 	add_child(_session_timer)
 	
-	_handler_name = "Constellation"
-	settings_manager.register_setting("Session", Data.Type.NETWORKSESSION, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
+	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):
@@ -139,7 +143,7 @@ func _init() -> void:
 		_local_node._set_role_flags(_role_flags)
 	
 	if cli_args.has("--ctl-random-id"):
-		_local_node._set_node_id(UUID_Util.v4())
+		_local_node._set_node_id(UUID.v4())
 	
 	(func ():
 		node_found.emit(_local_node)
@@ -706,7 +710,7 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 		session = ConstellationSession.create_from_session_announce(p_message)
 	
 	_known_sessions[session.get_session_id()] = session
-	session.request_delete.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
+	session.delete_requested.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
 	
 	session_created.emit(session)
 	
@@ -845,7 +849,7 @@ class ConstellationConfig extends Object:
 	static var user_config_file_name: String = "constellation.conf"
 	
 	## NodeID for the local node
-	static var node_id: String = UUID_Util.v4()
+	static var node_id: String = UUID.v4()
 	
 	## Node name for the local node
 	static var node_name: String = "ConstellationNode"

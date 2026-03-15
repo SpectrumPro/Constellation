@@ -8,11 +8,12 @@ class_name ConstellationSession extends NetworkSession
 ## The Constellation NetworkHandler
 static var _network: Constellation = null
 
+
 ## All nodes in this session
 var _nodes: Array[ConstellationNode]
 
 ## The SessionID of this session
-var _session_id: String = UUID_Util.v4()
+var _session_id: String = UUID.v4()
 
 ## Priority order
 var _priority_order: Array[ConstellationNode]
@@ -50,10 +51,13 @@ static func create_unknown_session(p_session_id: String) -> ConstellationSession
 
 
 ## Init
-func _init() -> void:
-	settings_manager.register_setting("Master", Data.Type.NETWORKNODE, set_master, get_session_master, [master_changed]).set_class_filter(ConstellationNode)
-	settings_manager.register_setting("Name", Data.Type.STRING, set_session_name, get_session_name, [session_name_changed])
-	settings_manager.register_status("MemberCount", Data.Type.INT, get_number_of_nodes, [node_joined, node_left])
+func _init(p_uuid: String = UUID.v4()) -> void:
+	super._init(p_uuid)
+	_set_class_name("ConstellationSession")
+	
+	_settings.register_setting("Master", Data.Type.OBJECT, set_master, get_session_master, [master_changed]).set_class_filter(ConstellationNode)
+	_settings.register_setting("Name", Data.Type.STRING, set_session_name, get_session_name, [session_name_changed])
+	_settings.register_status("MemberCount", Data.Type.INT, get_number_of_nodes, [node_joined, node_left])
 
 
 ## Sends a command to the session, using p_node_filter as the NodeFilter
@@ -328,7 +332,7 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 	
 	if not get_number_of_nodes() and not p_no_delete:
 		node_left.emit(p_node)
-		request_delete.emit()
+		delete_requested.emit()
 		
 		return true
 	

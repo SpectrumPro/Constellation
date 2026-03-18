@@ -106,14 +106,14 @@ func _init(p_uuid: String = UUID.v4()) -> void:
 	super._init(p_uuid)
 	_set_class_name("ConstellationNode")
 	
+	_settings.register_setting("Name", Data.Type.STRING, set_node_name, get_node_name, [name_changed])\
+	.display("NetworkItem", 0)
+	
 	_settings.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState)\
 	.display("NetworkNode", 0)
 	
-	_settings.register_setting("Name", Data.Type.STRING, set_node_name, get_node_name, [name_changed])\
-	.display("NetworkNode", 1)
-	
 	_settings.register_setting("Session", Data.Type.OBJECT, set_session, get_session, [session_changed])\
-	.display("NetworkNode", 2).set_class_filter(ConstellationSession)
+	.display("NetworkNode", 1).set_sub_type(Data.Sub.Type.OBJECT_NETWORKITEM).set_class_filter(ConstellationSession)
 	
 	_settings.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
 	.display("ConstellationNode", 3).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)

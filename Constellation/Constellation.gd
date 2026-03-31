@@ -122,7 +122,7 @@ func _init(p_uuid: String = UUID.v4()) -> void:
 	add_child(_disco_timer)
 	add_child(_session_timer)
 	
-	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(ConstellationSession)
+	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(NetworkItem, ConstellationSession)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):

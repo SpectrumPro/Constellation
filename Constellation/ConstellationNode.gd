@@ -113,7 +113,7 @@ func _init(p_uuid: String = UUID.v4()) -> void:
 	.display("NetworkNode", 0)
 	
 	_settings.register_setting("Session", Data.Type.OBJECT, set_session, get_session, [session_changed])\
-	.display("NetworkNode", 1).set_sub_type(Data.Sub.Type.OBJECT_NETWORKITEM).set_class_filter(ConstellationSession)
+	.display("NetworkNode", 1).set_class_filter(NetworkItem, ConstellationSession)
 	
 	_settings.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
 	.display("ConstellationNode", 3).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)

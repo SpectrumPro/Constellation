@@ -55,7 +55,7 @@ func _init(p_uuid: String = UUID.v4()) -> void:
 	super._init(p_uuid)
 	_set_class_name("ConstellationSession")
 	
-	_settings.register_setting("Master", Data.Type.OBJECT, set_master, get_session_master, [master_changed]).set_class_filter(ConstellationNode)
+	_settings.register_setting("Master", Data.Type.OBJECT, set_master, get_session_master, [master_changed]).set_class_filter(NetworkItem, ConstellationNode)
 	_settings.register_setting("Name", Data.Type.STRING, set_session_name, get_session_name, [session_name_changed])
 	_settings.register_status("MemberCount", Data.Type.INT, get_number_of_nodes, [node_joined, node_left])
 

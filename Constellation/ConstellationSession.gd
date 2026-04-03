@@ -249,19 +249,21 @@ func _set_session_id(p_session_id: String) -> bool:
 
 ## Sets the session master node
 func _set_session_master(p_session_master: ConstellationNode) -> bool:
-	if p_session_master == _session_master or p_session_master not in _nodes:
+	if p_session_master == _session_master:
 		return false
 	
-	if _session_master:
+	if is_instance_valid(_session_master):
 		_session_master._remove_session_master_mark()
+	
+	if p_session_master not in _nodes:
+		return false
 	
 	_session_master = p_session_master
 	
-	if _session_master:
+	if is_instance_valid(_session_master):
 		_session_master._mark_as_session_master()
-		
-	master_changed.emit(_session_master)
 	
+	master_changed.emit(_session_master)
 	return true
 
 

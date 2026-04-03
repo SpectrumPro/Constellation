@@ -701,7 +701,7 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 	if _unknown_sessions.has(p_message.session_id):
 		session = _unknown_sessions[p_message.session_id]
 		session._mark_as_unknown(false)
-		session.update_with(p_message)
+		session._update_with(p_message)
 		
 		_unknown_sessions.erase(p_message.session_id)
 		_log("Using unknown session: ", session.get_session_id())

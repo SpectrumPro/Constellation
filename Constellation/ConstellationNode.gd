@@ -366,7 +366,7 @@ func is_executor() -> bool:
 
 
 ## Returns true if this RoleFlag includes the CONTROLLER role
-func is_controller(p_flags: int) -> bool:
+func is_controller() -> bool:
 	return (_role_flags & RoleFlags.CONTROLLER) != 0
 
 

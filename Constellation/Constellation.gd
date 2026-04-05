@@ -822,6 +822,7 @@ func _on_session_timer_timeout() -> void:
 
 ## Called when the sessions is to be deleted after all nodes disconnect
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
+	p_session.delete_requested.disconnect(_on_session_delete_request)
 	_known_sessions.erase(p_session.get_session_id())
 
 

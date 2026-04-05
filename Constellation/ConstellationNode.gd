@@ -101,9 +101,9 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 	return node
 
 
-## Init
-func _init(p_uuid: String = UUID.v4()) -> void:
-	super._init(p_uuid)
+## init
+func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
+	super._init(p_uuid, p_args)
 	_set_class_name("ConstellationNode")
 	
 	_settings.register_setting("Name", Data.Type.STRING, set_node_name, get_node_name, [name_changed])\

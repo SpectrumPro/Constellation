@@ -86,9 +86,9 @@ var _unknown_nodes: Dictionary[String, ConstellationNode]
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
 
-## Init
-func _init(p_uuid: String = UUID.v4()) -> void:
-	super._init(p_uuid)
+## init
+func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
+	super._init(p_uuid, p_args)
 	
 	_set_class_name("Constellation")
 	set_uname("Constellaton", true)

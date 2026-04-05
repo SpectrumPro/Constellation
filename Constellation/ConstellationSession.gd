@@ -50,9 +50,9 @@ static func create_unknown_session(p_session_id: String) -> ConstellationSession
 	return session
 
 
-## Init
-func _init(p_uuid: String = UUID.v4()) -> void:
-	super._init(p_uuid)
+## init
+func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
+	super._init(p_uuid, p_args)
 	_set_class_name("ConstellationSession")
 	
 	_settings.register_setting("Master", Data.Type.OBJECT, set_master, get_session_master, [master_changed]).set_class_filter(NetworkItem, ConstellationNode)

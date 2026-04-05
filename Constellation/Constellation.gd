@@ -710,7 +710,7 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 		session = ConstellationSession.create_from_session_announce(p_message)
 	
 	_known_sessions[session.get_session_id()] = session
-	session.delete_requested.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
+	session.delete_requested.connect(_on_session_delete_request)
 	
 	session_created.emit(session)
 	

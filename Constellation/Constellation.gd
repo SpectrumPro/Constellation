@@ -96,10 +96,6 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	ConstellationNode._network = self
 	ConstellationSession._network = self
 	
-	set_process(false)
-	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
-	ConstellationConfig.load_user_config()
-	
 	_local_node = ConstellationNode.create_local_node()
 	_local_node._set_node_ip(ConstellationConfig.bind_address)
 	_local_node._set_node_name(ConstellationConfig.node_name)
@@ -107,6 +103,15 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	
 	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
+	
+	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(NetworkItem, ConstellationSession)
+	set_process(false)
+
+
+## ready
+func _ready() -> void:
+	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
+	ConstellationConfig.load_user_config()
 	
 	_disco_timer.set_autostart(false)
 	_disco_timer.set_one_shot(false)
@@ -121,8 +126,6 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	add_child(_local_node)
 	add_child(_disco_timer)
 	add_child(_session_timer)
-	
-	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(NetworkItem, ConstellationSession)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):
@@ -828,6 +831,21 @@ func _on_session_delete_request(p_session: ConstellationSession) -> void:
 
 ## ConstellationConfig object
 class ConstellationConfig extends Object:
+	## Class tree to merge with the network ClassListDB
+	static var class_tree: Dictionary = {
+		"NetworkItem": {
+			"NetworkHandler": {
+				"Constellation": Constellation,
+			},
+			"NetworkNode": {
+				"ConstellationNode": ConstellationNode,
+			},
+			"NetworkSession": {
+				"ConstellationSession": ConstellationSession,
+			}
+		}
+	}
+	
 	## Defines a custom callable to call when logging infomation
 	static var custom_loging_method: Callable = Callable()
 	
@@ -864,6 +882,9 @@ class ConstellationConfig extends Object:
 	## True if this node should auto create a session once online, asuming previous session is is null and the node is not already in a session
 	static var auto_create_session: bool = true
 	
+	## The ClassListDB for storing all NetworkItem classes
+	static var network_item_class_db: ClassListDB
+	
 	## The ConfigFile object to access the user config file 
 	static var _config_access: ConfigFile
 	
@@ -893,6 +914,10 @@ class ConstellationConfig extends Object:
 		session_id = type_convert(config.get("session_id", session_id), TYPE_STRING)
 		session_auto_rejoin = type_convert(config.get("session_auto_rejoin", session_auto_rejoin), TYPE_BOOL)
 		auto_create_session = type_convert(config.get("auto_create_session", auto_create_session), TYPE_BOOL)
+		
+		network_item_class_db = type_convert(config.get("network_item_class_db", network_item_class_db), TYPE_OBJECT)
+		if is_instance_valid(network_item_class_db):
+			network_item_class_db.merge_class_tree(class_tree)
 		
 		DirAccess.make_dir_recursive_absolute(user_config_file_location)
 		_config_access = ConfigFile.new()

@@ -35,6 +35,6 @@ static var config: Dictionary = {
 	## True if this node should auto create a session once online, asuming previous session is is null and the node is not already in a session
 	"auto_create_session": true,
 	
-	## THe ClassListDB for all NetworkItems
+	## THe CoreClassListDB for all NetworkItems
 	"network_item_class_db": null
 }

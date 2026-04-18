@@ -831,7 +831,7 @@ func _on_session_delete_request(p_session: ConstellationSession) -> void:
 
 ## ConstellationConfig object
 class ConstellationConfig extends Object:
-	## Class tree to merge with the network ClassListDB
+	## Class tree to merge with the network CoreClassListDB
 	static var class_tree: Dictionary = {
 		"NetworkItem": {
 			"NetworkHandler": {
@@ -882,8 +882,8 @@ class ConstellationConfig extends Object:
 	## True if this node should auto create a session once online, asuming previous session is is null and the node is not already in a session
 	static var auto_create_session: bool = true
 	
-	## The ClassListDB for storing all NetworkItem classes
-	static var network_item_class_db: ClassListDB
+	## The CoreClassListDB for storing all NetworkItem classes
+	static var network_item_class_db: CoreClassListDB
 	
 	## The ConfigFile object to access the user config file 
 	static var _config_access: ConfigFile

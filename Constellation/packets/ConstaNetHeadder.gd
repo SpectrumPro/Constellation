@@ -80,7 +80,7 @@ static var ClassTypes: Dictionary[int, Script] = {
 var type: Type = Type.UNKNOWN
 
 ## Flags for this ConstaNET packet
-var flags: Flags = Flags.NONE
+var flags: int = Flags.NONE
 
 ## The UUID for the origin node 
 var origin_id: String = ""

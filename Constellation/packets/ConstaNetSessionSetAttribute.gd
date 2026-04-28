@@ -69,7 +69,7 @@ func _phrase_packet(p_packet: PackedByteArray) -> void:
 	session_id = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
 	offset += NODE_ID_LENGTH
 	
-	attribute = ba_to_int(p_packet, offset, 2)
+	attribute = ba_to_int(p_packet, offset, 2) as Attribute
 	offset += 2
 	
 	value_size = ba_to_int(p_packet, offset, 2)

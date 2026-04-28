@@ -61,7 +61,7 @@ func _phrase_packet(p_packet: PackedByteArray) -> void:
 	var offset: int = 0
 	var value_size: int = 0
 	
-	attribute = ba_to_int(p_packet, offset, 2)
+	attribute = ba_to_int(p_packet, offset, 2) as Attribute
 	offset += 2
 	
 	value_size = ba_to_int(p_packet, offset, 2)

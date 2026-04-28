@@ -234,7 +234,7 @@ static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	
 	message = ClassTypes[p_type].new()
 	message._origin_version = p_origin_version
-	message.type = p_type
+	message.type = p_type as Type
 	message.flags = p_flags
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
@@ -282,7 +282,7 @@ static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	var message: ConstaNetHeadder = ClassTypes[p_type].new()
 	
 	message._origin_version = p_packet.decode_u8(0)
-	message.type = p_type
+	message.type = p_type as Type
 	message.flags = p_flags
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id

@@ -97,10 +97,6 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	ConstellationSession._network = self
 	
 	_local_node = ConstellationNode.create_local_node()
-	_local_node._set_node_ip(ConstellationConfig.bind_address)
-	_local_node._set_node_name(ConstellationConfig.node_name)
-	_local_node._set_node_id(ConstellationConfig.node_id)
-	
 	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
 	
@@ -112,6 +108,10 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 func _ready() -> void:
 	ConstellationConfig.load_config("res://ConstellaitionConfig.gd")
 	ConstellationConfig.load_user_config()
+	
+	_local_node._set_node_ip(ConstellationConfig.bind_address)
+	_local_node._set_node_name(ConstellationConfig.node_name)
+	_local_node._set_node_id(ConstellationConfig.node_id)
 	
 	_disco_timer.set_autostart(false)
 	_disco_timer.set_one_shot(false)

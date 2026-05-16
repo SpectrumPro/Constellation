@@ -258,7 +258,10 @@ func create_session(p_name: String) -> NetworkSession:
 
 ## Joins a pre-existing session on the network
 func join_session(p_session: NetworkSession) -> bool:
-	if not p_session or p_session == _local_node.get_session():
+	if p_session == _local_node.get_session():
+		return false
+	
+	if not is_instance_valid(p_session):
 		leave_session()
 		return false
 	

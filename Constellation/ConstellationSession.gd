@@ -334,7 +334,7 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 	
 	if not get_number_of_nodes() and not p_no_delete:
 		node_left.emit(p_node)
-		delete_requested.emit()
+		delete_requested.emit(self)
 		
 		return true
 	

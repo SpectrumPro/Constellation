@@ -249,7 +249,7 @@ func create_session(p_name: String) -> NetworkSession:
 	session._add_node(_local_node)
 	
 	_known_sessions[session.get_session_id()] = session
-	session.delete_requested.connect(_on_session_delete_request.bind(session), CONNECT_ONE_SHOT)
+	session.delete_requested.connect(_on_session_delete_request)
 	session_created.emit(session)
 	
 	_send_session_anouncement(session)

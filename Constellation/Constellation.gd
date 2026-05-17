@@ -809,7 +809,7 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 ## Pings all nodes and sessions on the network to check they are still online.
 func _refresh() -> void:
 	for node: ConstellationNode in _known_nodes.values():
-		if node.get_connection_state() != NetworkNode.ConnectionState.CONNECTED:
+		if node.get_connection_state() != NetworkNode.ConnectionState.CONNECTED or node.is_local():
 			continue
 		
 		node._refresh()

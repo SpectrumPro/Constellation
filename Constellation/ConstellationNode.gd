@@ -64,6 +64,12 @@ var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 ## Previous TCP Peer status
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 
+## UNIX timestamp of when the last heartbeat was sent
+var _last_heart_beat_at: float
+
+## True when a heartbeat ACK message has been received since last refresh
+var _has_received_heartbeat_ack: bool = false
+
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
 static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationNode:
@@ -76,7 +82,6 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._node_ip = p_disco.node_ip
 	node._node_udp_port = p_disco.udp_port
 	node._node_tcp_port = p_disco.tcp_port
-	node._last_seen = Time.get_unix_time_from_system()
 	node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
 	
 	return node
@@ -112,19 +117,22 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	.display("NetworkItem", 0)
 	
 	_settings.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState)\
-	.display("NetworkNode", 0)
+	.display("NetworkNode", 1)
 	
 	_settings.register_setting("Session", Data.Type.OBJECT, set_session, get_session, [session_changed])\
-	.display("NetworkNode", 1).set_class_filter(NetworkItem, ConstellationSession)
+	.display("NetworkNode", 2).set_class_filter(NetworkItem, ConstellationSession)
+	
+	_settings.register_status("Ping", Data.Type.FLOAT, get_ping_time, [ping_changed])\
+	.display("NetworkNode", 3)
 	
 	_settings.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
-	.display("ConstellationNode", 3).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)
+	.display("ConstellationNode", 0).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)
 	
 	_settings.register_setting("BindAddress", Data.Type.IP, _network.set_ip_and_interface, _network.get_ip_and_interface, [_network.ip_and_interface_changed])\
-	.display("ConstellationNode", 4).set_display_condition(is_local)
+	.display("ConstellationNode", 1).set_display_condition(is_local)
 	
 	_settings.register_status("IpAddress", Data.Type.STRING, get_node_ip, [node_ip_changed])\
-	.display("ConstellationNode", 5)
+	.display("ConstellationNode", 2)
 
 
 ## Called each frame
@@ -508,6 +516,8 @@ func _send_heartbeat_request(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBea
 	
 	var errcode: Error = send_message(message, p_transport_mode)
 	_network._logv("Sending HeartBeat REQ: ", ConstaNetHeartBeat.Mode.keys()[p_mode], ", via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
+	
+	_last_heart_beat_at = Time.get_unix_time_from_system()
 
 
 ## Sends a Heartbeat message with Flags.ACKNOWLEDGMENT to the remote node
@@ -557,8 +567,6 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		
 		if [ConnectionState.UNKNOWN, ConnectionState.OFFLINE, ConnectionState.LOST_CONNECTION].has(_connection_state):
 			_set_connection_status(ConnectionState.DISCOVERED)
-		
-		_last_seen_now()
 	
 	else:
 		if p_discovery.is_request():
@@ -610,13 +618,24 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 ## Handles a ConstaNetHeartBeat
 func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP = null) -> void:
 	match _connection_state:
-		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.is_acknowledgment():
+		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.mode == ConstaNetHeartBeat.Mode.CONNECTION and p_heart_beat.is_acknowledgment():
 			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+			_send_heartbeat_request()
 		
-		_ when _connection_state > ConnectionState.OFFLINE and p_heart_beat.is_request() and is_instance_valid(p_source):
+		_ when _connection_state > ConnectionState.OFFLINE and p_heart_beat.mode == ConstaNetHeartBeat.Mode.CONNECTION and p_heart_beat.is_request() and is_instance_valid(p_source):
 			_use_stream(p_source)
 			_send_heartbeat_acknowledment(ConstaNetHeartBeat.Mode.CONNECTION, TransportMode.TCP)
+			
 			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+			_send_heartbeat_request()
+		
+		ConnectionState.CONNECTED when p_heart_beat.mode == ConstaNetHeartBeat.Mode.HEARTBEAT and p_heart_beat.is_request():
+			_send_heartbeat_acknowledment()
+		
+		ConnectionState.CONNECTED when p_heart_beat.mode == ConstaNetHeartBeat.Mode.HEARTBEAT and p_heart_beat.is_acknowledgment():
+			_ping = Time.get_unix_time_from_system() - _last_heart_beat_at
+			_has_received_heartbeat_ack = true
+			ping_changed.emit(snappedf(_ping, 0.001))
 
 
 ## Handles a ConstaNetCommand
@@ -684,22 +703,13 @@ func _handle_tcp_status_error() -> void:
 			_set_connection_status(ConnectionState.CONNECTION_ERROR)
 
 
-## Sets the last seen time to now
-func _last_seen_now() -> void:
-	_last_seen = Time.get_unix_time_from_system()
-	last_seen_changed.emit(_last_seen)
-
-
 ## Runs a refresh step
 func _refresh() -> void:
-	return 
-	prints("Current time:", Time.get_unix_time_from_system(), "Last seen:", _last_seen, "Delta:", Time.get_unix_time_from_system() - _last_seen)
+	_network._logv("Last seen delta to: ", get_node_name(), " is: ", _ping)
 	
-	if Time.get_unix_time_from_system() - _last_seen > Constellation.DISCO_TIMEOUT:
+	if not _has_received_heartbeat_ack:
+		_network._log(get_node_name(), "took too long to respond")
 		_set_connection_status(ConnectionState.LOST_CONNECTION)
-		print("bad")
 	
-	else:
-		print("Good")
-	
-	_send_discovery_request(TransportMode.TCP)
+	_has_received_heartbeat_ack = false
+	_send_heartbeat_request()

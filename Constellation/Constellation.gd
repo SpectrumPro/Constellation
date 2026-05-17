@@ -15,14 +15,15 @@ const MCAST_GROUP: String = "239.38.23.1"
 ## UDP bind port
 const UDP_MCAST_PORT: int = 3823
 
-## Time in seconds for discovery
-const DISCO_TIMEOUT: int = 10
+## Interval in second in which to send discovery messages to the network
+const DISCO_INTERVAL: int = 10
 
-## Wait time in seconds before session discovery deems a given sessionID to no longer exist, and continue with auto create
-const SESSION_DISCO_WAIT_TIME: int = 2
+## Time in seconds for a responce from a node or session before its deemed offline
+const DISCO_TIMEOUT: int = 2
 
 ## Max time to wait in second for the next chunk of a multipart message to be recieved
 const MULTI_PART_MAX_WAIT: int = 10
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -74,7 +75,10 @@ var _unknown_sessions: Dictionary[String, ConstellationSession]
 var _disco_timer: Timer = Timer.new()
 
 ## Timer for session auto create
-var _session_timer: Timer = Timer.new()
+var _session_auto_create_timer: Timer = Timer.new()
+
+## Timer used when running a network refresh
+var _refresh_timer: Timer = Timer.new()
 
 ## Stores all known devices by thier NodeID
 var _known_nodes: Dictionary[String, ConstellationNode] = {}
@@ -115,17 +119,23 @@ func _ready() -> void:
 	
 	_disco_timer.set_autostart(false)
 	_disco_timer.set_one_shot(false)
-	_disco_timer.set_wait_time(DISCO_TIMEOUT)
+	_disco_timer.set_wait_time(DISCO_INTERVAL)
 	_disco_timer.timeout.connect(_on_disco_timeout)
 	
-	_session_timer.set_autostart(false)
-	_session_timer.set_one_shot(true)
-	_session_timer.set_wait_time(SESSION_DISCO_WAIT_TIME)
-	_session_timer.timeout.connect(_on_session_timer_timeout)
+	_session_auto_create_timer.set_autostart(false)
+	_session_auto_create_timer.set_one_shot(true)
+	_session_auto_create_timer.set_wait_time(DISCO_TIMEOUT)
+	_session_auto_create_timer.timeout.connect(_on_session_timer_timeout)
+	
+	_refresh_timer.set_autostart(false)
+	_refresh_timer.set_one_shot(false)
+	_refresh_timer.set_wait_time(DISCO_TIMEOUT)
+	_refresh_timer.timeout.connect(_on_refresh_timer_timeout)
 	
 	add_child(_local_node)
 	add_child(_disco_timer)
-	add_child(_session_timer)
+	add_child(_session_auto_create_timer)
+	add_child(_refresh_timer)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):
@@ -203,17 +213,17 @@ func start_node() -> Error:
 ## Stops the node
 func stop_node(p_internal_only: bool = false) -> Error:
 	if not p_internal_only:
-		_log("Stopping Down")
+		_log("Stopping Node")
 		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
 	
 	_set_network_state(NetworkState.SHUTTING_DOWN)
 	_close_network()
 	
 	for node: ConstellationNode in _known_nodes.values():
-		node.close()
+		node.delete()
 	
 	for session: ConstellationSession in _known_sessions.values():
-		session.close()
+		session.delete()
 	
 	_local_node._set_session_no_join(null)
 	
@@ -223,7 +233,8 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_unknown_sessions.clear()
 	
 	_disco_timer.stop()
-	_session_timer.stop()
+	_session_auto_create_timer.stop()
+	_refresh_timer.stop()
 	
 	_set_network_state(NetworkState.OFFLINE)
 	return OK
@@ -242,6 +253,7 @@ func create_session(p_name: String) -> NetworkSession:
 	if not p_name or _network_state != NetworkState.READY:
 		return null
 	
+	_logv("Creating new Session with name: \"", p_name, "\"")
 	var session: ConstellationSession = ConstellationSession.new()
 	
 	session._set_name(p_name)
@@ -269,7 +281,7 @@ func join_session(p_session: NetworkSession) -> bool:
 		leave_session()
 	
 	for node: ConstellationNode in p_session.get_nodes():
-		node.connect_tcp()
+		node.connect_node()
 	
 	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
 	
@@ -299,7 +311,7 @@ func leave_session() -> bool:
 	_send_message_mcast(message)
 	
 	for node: ConstellationNode in session.get_nodes():
-		node.disconnect_tcp()
+		node.disconnect_node()
 	
 	return true
 
@@ -423,6 +435,8 @@ func _set_network_state(p_network_state: NetworkState) -> bool:
 	if p_network_state == _network_state:
 		return false
 	
+	_logv("NetworkStage changed to: ", NetworkState.keys()[p_network_state])
+	
 	_network_state = p_network_state
 	network_state_changed.emit(_network_state, _network_state_err_code if _network_state == NetworkState.ERROR else OK)
 	
@@ -507,12 +521,13 @@ func _close_network() -> void:
 ## Starts the discovery stage
 func _begin_discovery() -> void:
 	_disco_timer.start()
+	_refresh_timer.start()
 	
-	if ConstellationConfig.auto_create_session and not ConstellationConfig.session_id:
-		_auto_create_session()
+	if ConstellationConfig.auto_create_session and ConstellationConfig.session_id:
+		_session_auto_create_timer.start()
 	
 	elif ConstellationConfig.auto_create_session:
-		_session_timer.start()
+		_auto_create_session()
 	
 	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
 	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
@@ -546,7 +561,7 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
 	
-	_logv("Sending MCAST message: ", error_string(tx_error))
+	_logv("Sending MCAST message, type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
 	return tx_error
 
 
@@ -555,7 +570,7 @@ func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Er
 	var message: ConstaNetDiscovery = _create_discovery(p_flags)
 	
 	if _network_state == NetworkState.READY:
-		_disco_timer.start(DISCO_TIMEOUT)
+		_disco_timer.start(DISCO_INTERVAL)
 	
 	return _send_message_mcast(message)
 
@@ -647,46 +662,38 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 			_handle_multi_part(p_message)
 	
 	if p_message.target_id == get_node_id():
-		_local_node._handle_message(p_message)
+		_local_node._handle_message(p_message, p_source)
 	
-	elif not p_message.target_id and p_message.origin_id in _known_nodes:
-		_known_nodes[p_message.origin_id]._handle_message(p_message)
+	if p_message.origin_id in _known_nodes:
+		_known_nodes[p_message.origin_id]._handle_message(p_message, p_source)
 
 
 ## Handles a discovery message
 func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: StreamPeerTCP = null) -> void:
-	if p_discovery.origin_id not in _known_nodes:
-		var node: ConstellationNode
-		
-		if p_discovery.origin_id in _unknown_nodes:
-			node = _unknown_nodes[p_discovery.origin_id]
-			node._mark_as_unknown(false)
-			node._update_from_discovery(p_discovery)
-			
-			_unknown_nodes.erase(p_discovery.origin_id)
-			_log("Using unknown node: ", node.get_node_id())
-		
-		else:
-			node = ConstellationNode.create_from_discovery(p_discovery)
-		
-		_known_nodes[p_discovery.origin_id] = node
-		add_child(node)
-		node_found.emit(node)
+	if p_discovery.is_request():
+		_log("Got Discovery REQ from: ", p_discovery.node_name)
 	
-	if is_instance_valid(p_source):
-		if p_discovery.is_request():
-			var origin_node: ConstellationNode = get_node_from_id(p_discovery.origin_id)
-			
-			if is_instance_valid(origin_node):
-				origin_node._use_stream(p_source)
-				origin_node._send_tcp_discovery_acknowledment()
-				origin_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-		
-		elif p_discovery.is_acknowledgment():
-			_local_node._set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+	if _known_nodes.has(p_discovery.origin_id):
+		return
 	
-	elif p_discovery.is_request():
-		_send_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
+	var node: ConstellationNode
+	
+	if p_discovery.origin_id in _unknown_nodes:
+		node = _unknown_nodes[p_discovery.origin_id]
+		node._mark_as_unknown(false)
+		node._update_from_discovery(p_discovery)
+		
+		_unknown_nodes.erase(p_discovery.origin_id)
+		_log("Using unknown node: ", node.get_node_id())
+	
+	else:
+		node = ConstellationNode.create_from_discovery(p_discovery)
+	
+	_logv("Found new node on network: ", node.get_node_name())
+	_known_nodes[p_discovery.origin_id] = node
+	
+	add_child(node)
+	node_found.emit(node)
 
 
 ## Handles a ConstaNetSessionDiscovery
@@ -715,9 +722,10 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 	else:
 		session = ConstellationSession.create_from_session_announce(p_message)
 	
+	_logv("Found new session on network: ", session.get_session_name())
 	_known_sessions[session.get_session_id()] = session
-	session.delete_requested.connect(_on_session_delete_request)
 	
+	session.delete_requested.connect(_on_session_delete_request)
 	session_created.emit(session)
 	
 	if ConstellationConfig.session_auto_rejoin and not _local_node.get_session() and ConstellationConfig.session_id == session.get_session_id():
@@ -774,7 +782,7 @@ func _handle_incoming_tcp_connection() -> bool:
 ## Processes a StreamPeerTCP for data
 func _process_stream_peer(p_peer: StreamPeerTCP) -> void:
 	p_peer.poll()
-		
+	
 	if p_peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
 		_logv("Disconnecting TCP Peer from: ", p_peer.get_connected_host(), ":", p_peer.get_connected_port())
 		_connected_tcp_peers.erase(p_peer)
@@ -796,6 +804,15 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 		_logv("Dropping multipart ", p_multi_part.id, " due to timeout")
 		_active_multi_parts.erase(p_multi_part.id)
 		p_multi_part.free()
+
+
+## Pings all nodes and sessions on the network to check they are still online.
+func _refresh() -> void:
+	for node: ConstellationNode in _known_nodes.values():
+		if node.get_connection_state() != NetworkNode.ConnectionState.CONNECTED:
+			continue
+		
+		node._refresh()
 
 
 ## Called when the node name is changed on the LocalNode
@@ -830,6 +847,11 @@ func _on_session_timer_timeout() -> void:
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	p_session.delete_requested.disconnect(_on_session_delete_request)
 	_known_sessions.erase(p_session.get_session_id())
+
+
+## Called when the refresh timer times out
+func _on_refresh_timer_timeout() -> void:
+	_refresh()
 
 
 ## ConstellationConfig object

@@ -123,18 +123,6 @@ func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeF
 			return ERR_INVALID_PARAMETER
 
 
-## Closes this sessions local object
-func close() -> void:
-	_set_session_master(null)
-	
-	for node: ConstellationNode in _nodes.duplicate():
-		_remove_node(node)
-		_node_connections.disconnect_object(node, true)
-	
-	_priority_order.clear()
-	_nodes.clear()
-
-
 ## Sets the position of a node in the priority order
 func set_priority_order(p_node: NetworkNode, p_position: int) -> bool:
 	if p_node not in _nodes:
@@ -238,6 +226,15 @@ func has_session_master() -> bool:
 	return _session_master != null
 
 
+## Closes this sessions local object
+func delete() -> void:
+	super.delete()
+	_set_session_master(null)
+	
+	for node: ConstellationNode in _nodes.duplicate():
+		_remove_node(node)
+
+
 ## Sets the SessionID
 func _set_session_id(p_session_id: String) -> bool:
 	if p_session_id == _session_id:
@@ -327,25 +324,20 @@ func _add_node(p_node: ConstellationNode) -> bool:
 
 ## Removes a node from this session
 func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
-	if p_node not in _nodes:
+	if not _nodes.has(p_node):
 		return false
 	
 	_nodes.erase(p_node)
+	_priority_order.erase(p_node)
+	_node_connections.disconnect_object(p_node, true)
+	
+	if p_node == _session_master:
+		_set_session_master(_priority_order[0] if _priority_order else null)
+	
+	node_left.emit(p_node)
 	
 	if not get_number_of_nodes() and not p_no_delete:
-		node_left.emit(p_node)
-		delete_requested.emit(self)
-		
-		return true
-	
-	else:
-		_priority_order.erase(p_node)
-		_node_connections.disconnect_object(p_node, true)
-		
-		if p_node == _session_master:
-			_set_session_master(_priority_order[0] if _priority_order else null)
-		
-		node_left.emit(p_node)
+		delete()
 	
 	return true
 
@@ -367,7 +359,7 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 	if _network.get_local_node() not in _nodes:
 		return
 	
-	_network._logv("ConnectionState of: ", p_node.get_node_name(), ", changed to: ", ConstellationNode.ConnectionState.keys()[p_connection_state])
+	_network._logv("ConnectionState of: ", p_node.get_node_name(), ", changed to: ", ConstellationNode.ConnectionState.keys()[p_connection_state], ", in session: ", get_session_name())
 	
 	match p_connection_state:
 		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:

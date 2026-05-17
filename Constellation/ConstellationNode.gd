@@ -18,6 +18,7 @@ signal node_ip_changed(ip: String)
 ## The MTU for udp payloads, if this is exceeded the command will be sent as a multipart message
 const UDP_MTP: int = 1000
 
+
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
 
@@ -26,6 +27,7 @@ const Flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags
 
 ## NetworkRole
 const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
+
 
 ## Enum for TransportModes
 enum TransportMode {
@@ -133,47 +135,36 @@ func _process(delta: float) -> void:
 	if status != _tcp_previous_status:
 		_tcp_previous_status = status
 		
-		if _connection_state == ConnectionState.OFFLINE:
-			return
-		
-		match status:
-			StreamPeerTCP.Status.STATUS_NONE:
-				_set_connection_status(ConnectionState.LOST_CONNECTION)
-			
-			StreamPeerTCP.Status.STATUS_CONNECTING:
-				_set_connection_status(ConnectionState.CONNECTING)
-			
-			StreamPeerTCP.Status.STATUS_CONNECTED:
-				_send_tcp_discovery_request()
-			
-			StreamPeerTCP.Status.STATUS_ERROR:
-				_set_connection_status(ConnectionState.LOST_CONNECTION)
+		_handle_tcp_status_update(status)
 	
 	if status == StreamPeerTCP.STATUS_CONNECTED:
 		while _tcp_socket.get_available_bytes() > 0:
 			_network._handle_packet_frame(_tcp_socket)
 
 
-
-
 ## Connectes TCP to this node
-func connect_tcp() -> Error:
+func connect_node() -> Error:
 	if is_local():
 		return ERR_UNAVAILABLE
 	
-	if is_tcp_connected():
-		return ERR_ALREADY_EXISTS
-	
-	disconnect_tcp()
+	if _connection_state == ConnectionState.CONNECTED:
+		disconnect_node()
 	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)
+	
+	_network._logv("TCP connection began with errcode: ", error_string(err_code))
+	
+	if err_code:
+		_set_connection_status(ConnectionState.CONNECTION_ERROR)
+	else:
+		_set_connection_status(ConnectionState.CONNECTING)
 	
 	return err_code
 
 
 ## Disconnects TCP from this node
-func disconnect_tcp() -> void:
+func disconnect_node() -> void:
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 
@@ -278,14 +269,6 @@ func leave_session() -> bool:
 	return true
 
 
-## Closes this nodes local object
-func close() -> void:
-	disconnect_tcp()
-	_udp_socket.close()
-	
-	_connection_state = ConnectionState.UNKNOWN
-
-
 ## Gets the network role
 func get_role_flags() -> int:
 	return _role_flags
@@ -322,11 +305,6 @@ func get_session_id() -> String:
 		return _session.get_session_id()
 	
 	return ""
-
-
-## Returns the last time this node was seen on the network
-func get_last_seen_time() -> float:
-	return _last_seen
 
 
 ## Sends a message to set the name of this node on the network
@@ -381,6 +359,16 @@ func is_tcp_connected() -> bool:
 	return status == StreamPeerTCP.STATUS_CONNECTED
 
 
+## Closes this nodes local object
+func delete() -> void:
+	super.delete()
+	
+	disconnect_node()
+	_udp_socket.close()
+	
+	_connection_state = ConnectionState.UNKNOWN
+
+
 ## Sets the network role
 func _set_role_flags(p_role_flags: int) -> bool:
 	if p_role_flags == _role_flags:
@@ -397,7 +385,7 @@ func _set_connection_status(p_status: ConnectionState) -> bool:
 	if _connection_state == p_status:
 		return false
 	
-	_network._logv("Setting ConnectionState to remote node: ", get_name(), ", to: ", ConnectionState.keys()[p_status])
+	_network._logv("Setting ConnectionState to remote node: ", get_uname(), ", to: ", ConnectionState.keys()[p_status])
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
 	
@@ -418,7 +406,7 @@ func _set_node_name(p_node_name: String) -> bool:
 	if p_node_name == _name:
 		return false
 	
-	_network._logv("Changing name from: ", get_name(), ", tp: ", p_node_name)
+	_network._logv("Changing name from: \"", get_uname(), "\", to: \"", p_node_name, "\"")
 	_name = p_node_name
 	name_changed.emit(_name)
 	
@@ -498,58 +486,89 @@ func _mark_as_unknown(p_unknown: bool) -> void:
 
 
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
-func _send_tcp_discovery_request() -> void:
+func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
-	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
+	var errcode: Error = send_message(message, p_transport_mode)
 	
-	_network._logv("Sending TCP Discovery REQ, errcode: ", error_string(errcode), ", to: ", get_name())
+	_network._logv("Sending Discovery REQ, via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
 
 
 ## Sends a Discovery Flags.ACKNOWLEDGMENT to the remote node over TCP
-func _send_tcp_discovery_acknowledment() -> void:
+func _send_discovery_acknowledment(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.ACKNOWLEDGMENT)
-	var errcode: Error = _tcp_socket.put_data(message.get_as_packet())
+	var errcode: Error = send_message(message, p_transport_mode)
 	
-	_network._logv("Sending TCP Discovery ACK, errcode: ", error_string(errcode), ", to: ", get_name())
+	_network._logv("Sending Discovery ACK, via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
+
+
+## Sends a Heartbeat message with Flags.REQUEST to the remote node
+func _send_heartbeat_request(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, p_transport_mode: TransportMode = TransportMode.AUTO):
+	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.REQUEST)
+	message.mode = p_mode
+	
+	var errcode: Error = send_message(message, p_transport_mode)
+	_network._logv("Sending HeartBeat REQ: ", ConstaNetHeartBeat.Mode.keys()[p_mode], ", via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
+
+
+## Sends a Heartbeat message with Flags.ACKNOWLEDGMENT to the remote node
+func _send_heartbeat_acknowledment(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, p_transport_mode: TransportMode = TransportMode.AUTO):
+	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.ACKNOWLEDGMENT)
+	message.mode = p_mode
+	
+	var errcode: Error = send_message(message, p_transport_mode)
+	_network._logv("Sending HeartBeat ACK: ", ConstaNetHeartBeat.Mode.keys()[p_mode], ", via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
 
 
 ## Handles a ConstaNetHeadder
-func _handle_message(p_message: ConstaNetHeadder) -> void:
+func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null) -> void:
 	match p_message.type:
 		MessageType.DISCOVERY:
 			_handle_discovery(p_message)
 		
-		MessageType.GOODBYE:
+		MessageType.GOODBYE when not is_local():
 			_handle_goodbye(p_message)
 		
-		MessageType.SESSION_ANNOUNCE:
+		MessageType.SESSION_ANNOUNCE when not is_local():
 			_handle_session_announce(p_message)
 		
-		MessageType.SESSION_JOIN:
+		MessageType.SESSION_JOIN when not is_local():
 			_handle_session_join(p_message)
 		
-		MessageType.SESSION_LEAVE:
+		MessageType.SESSION_LEAVE when not is_local():
 			_handle_session_leave(p_message)
 		
 		MessageType.SET_ATTRIBUTE:
 			_handle_set_attribute(p_message)
 		
-		MessageType.COMMAND:
+		MessageType.HEARTBEAT when not is_local():
+			_handle_heartbeat(p_message, p_source)
+		
+		MessageType.COMMAND when is_local():
 			_handle_command(p_message)
 
 
 ## Handles a ConstaNetDiscovery
 func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	_update_from_discovery(p_discovery)
+	if not is_local():
+		_update_from_discovery(p_discovery)
+		
+		if p_discovery.is_request():
+			_send_discovery_acknowledment()
+		
+		if [ConnectionState.UNKNOWN, ConnectionState.OFFLINE, ConnectionState.LOST_CONNECTION].has(_connection_state):
+			_set_connection_status(ConnectionState.DISCOVERED)
+		
+		_last_seen_now()
 	
-	if [ConnectionState.UNKNOWN, ConnectionState.OFFLINE, ConnectionState.LOST_CONNECTION].has(_connection_state):
-		_set_connection_status(ConnectionState.DISCOVERED)
+	else:
+		if p_discovery.is_request():
+			_send_discovery_acknowledment()
 
 
 ## Handles a ConstaNetGoodbye
 func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	_leave_session()
-	disconnect_tcp()
+	disconnect_node()
 	_udp_socket.close()
 	_set_connection_status(ConnectionState.OFFLINE)
 
@@ -567,11 +586,6 @@ func _handle_session_join(p_session_join: ConstaNetSessionJoin) -> void:
 
 ## Handles a ConstaNetSessionLeave
 func _handle_session_leave(p_session_leave: ConstaNetSessionLeave) -> void:
-	var session: ConstellationSession = _network.get_session_from_id(p_session_leave.session_id)
-	
-	if session == _network.get_local_node().get_session():
-		disconnect_tcp()
-	
 	_leave_session()
 
 
@@ -593,6 +607,18 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 				_network.leave_session()
 
 
+## Handles a ConstaNetHeartBeat
+func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP = null) -> void:
+	match _connection_state:
+		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.is_acknowledgment():
+			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+		
+		_ when _connection_state > ConnectionState.OFFLINE and p_heart_beat.is_request() and is_instance_valid(p_source):
+			_use_stream(p_source)
+			_send_heartbeat_acknowledment(ConstaNetHeartBeat.Mode.CONNECTION, TransportMode.TCP)
+			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+
+
 ## Handles a ConstaNetCommand
 func _handle_command(p_command: ConstaNetCommand) -> void:
 	if p_command.in_session and p_command.in_session != get_session_id():
@@ -604,30 +630,11 @@ func _handle_command(p_command: ConstaNetCommand) -> void:
 
 ## Updates this nodes info from a discovery packet
 func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	if p_discovery.target_id:
+	if p_discovery.target_id or is_local():
 		return
 	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)
-	
-	_last_seen = Time.get_unix_time_from_system()
-	last_seen_changed.emit(_last_seen)
-	
-	var force_reconnect: bool = false
-	if p_discovery.node_ip != _node_ip:
-		_set_node_ip(p_discovery.node_ip)
-		force_reconnect = true
-	
-	if p_discovery.tcp_port != _node_tcp_port or force_reconnect:
-		_node_tcp_port = p_discovery.tcp_port
-		
-		if _connection_state in [ConnectionState.CONNECTED, ConnectionState.CONNECTING]:
-			connect_tcp()
-	
-	if p_discovery.udp_port != _node_udp_port or force_reconnect:
-		_node_udp_port = p_discovery.udp_port
-		_udp_socket.close()
-		_udp_socket.connect_to_host(_node_ip, _node_udp_port)
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
@@ -643,9 +650,56 @@ func _auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int = Flags.NONE) 
 
 ## Changed the TCP stream that is used to comunicate to the remote node
 func _use_stream(p_stream: StreamPeerTCP) -> void:
-	if _tcp_socket == p_stream:
+	if _tcp_socket == p_stream or is_local():
 		return
 	
-	_network._logv("Changing TCP stream object for: ", get_name())
+	_network._logv("Changing StreamPeerTCP object for: ", get_uname())
+	
 	_tcp_socket.disconnect_from_host()
 	_tcp_socket = p_stream
+
+
+## Handles a change of the TCP connection status
+func _handle_tcp_status_update(p_status: StreamPeerTCP.Status) -> void:
+	match p_status:
+		StreamPeerTCP.Status.STATUS_CONNECTED:
+			_handle_tcp_status_connected()
+			
+		StreamPeerTCP.Status.STATUS_ERROR, StreamPeerTCP.Status.STATUS_NONE:
+			_handle_tcp_status_error()
+
+
+## Handles StreamPeerTCP.Status.STATUS_CONNECTED
+func _handle_tcp_status_connected() -> void:
+	match _connection_state:
+		ConnectionState.CONNECTING:
+			_set_connection_status(ConnectionState.AWAITING_CONNECTION_ACK)
+			_send_heartbeat_request(ConstaNetHeartBeat.Mode.CONNECTION, TransportMode.TCP)
+
+
+## Handles StreamPeerTCP.Status.STATUS_ERROR
+func _handle_tcp_status_error() -> void:
+	match _connection_state:
+		ConnectionState.CONNECTING:
+			_set_connection_status(ConnectionState.CONNECTION_ERROR)
+
+
+## Sets the last seen time to now
+func _last_seen_now() -> void:
+	_last_seen = Time.get_unix_time_from_system()
+	last_seen_changed.emit(_last_seen)
+
+
+## Runs a refresh step
+func _refresh() -> void:
+	return 
+	prints("Current time:", Time.get_unix_time_from_system(), "Last seen:", _last_seen, "Delta:", Time.get_unix_time_from_system() - _last_seen)
+	
+	if Time.get_unix_time_from_system() - _last_seen > Constellation.DISCO_TIMEOUT:
+		_set_connection_status(ConnectionState.LOST_CONNECTION)
+		print("bad")
+	
+	else:
+		print("Good")
+	
+	_send_discovery_request(TransportMode.TCP)

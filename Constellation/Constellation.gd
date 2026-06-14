@@ -89,6 +89,10 @@ var _unknown_nodes: Dictionary[String, ConstellationNode]
 ## Stores all multi part messages being recieved
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
+## SignalGroup for the current session
+var _session_connections: SignalGroup = SignalGroup.new([
+	_on_current_session_node_joined,
+]).set_prefix("_on_current_session_")
 
 ## init
 func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
@@ -292,6 +296,7 @@ func join_session(p_session: NetworkSession) -> bool:
 	_local_node._set_session(p_session)
 	_send_message_mcast(message)
 	
+	_session_connections.connect_object(p_session)
 	return true
 
 
@@ -313,6 +318,7 @@ func leave_session() -> bool:
 	for node: ConstellationNode in session.get_nodes():
 		node.disconnect_node()
 	
+	_session_connections.disconnect_object(_local_node.session)
 	return true
 
 
@@ -680,8 +686,8 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 	
 	if p_discovery.origin_id in _unknown_nodes:
 		node = _unknown_nodes[p_discovery.origin_id]
-		node._mark_as_unknown(false)
 		node._update_from_discovery(p_discovery)
+		node._mark_as_unknown(false)
 		
 		_unknown_nodes.erase(p_discovery.origin_id)
 		_log("Using unknown node: ", node.get_node_id())
@@ -847,6 +853,13 @@ func _on_session_timer_timeout() -> void:
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	p_session.delete_requested.disconnect(_on_session_delete_request)
 	_known_sessions.erase(p_session.get_session_id())
+
+
+## Emitted when a node joins the current session
+func _on_current_session_node_joined(p_node: ConstellationNode) -> void:
+	if not p_node.is_in_connection_state():
+		p_node.connect_node()
+		_logv("Auto connecting to node: ", p_node.get_node_name(), ". It is now known, and in current session")
 
 
 ## Called when the refresh timer times out

@@ -158,6 +158,8 @@ func connect_node() -> Error:
 	if _connection_state == ConnectionState.CONNECTED:
 		disconnect_node()
 	
+	_network._logv("Connecting TCP to ", _node_ip, ":", _node_tcp_port)
+	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)
 	
@@ -491,6 +493,7 @@ func _mark_as_unknown(p_unknown: bool) -> void:
 		_node_flags |= NodeFlags.UNKNOWN
 	else:
 		_node_flags &= ~NodeFlags.UNKNOWN
+		no_longer_unknown.emit()
 
 
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
@@ -654,6 +657,16 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)
+	
+	var reconnect: bool = _node_ip != p_discovery.node_ip or _node_udp_port != p_discovery.udp_port
+	
+	_node_ip = p_discovery.node_ip
+	_node_udp_port = p_discovery.udp_port
+	_node_tcp_port = p_discovery.tcp_port
+	
+	if reconnect:
+		_udp_socket.close()
+		_udp_socket.connect_to_host(_node_ip, _node_udp_port)
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node

@@ -20,7 +20,8 @@ var _priority_order: Array[ConstellationNode]
 
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
-	_on_node_connection_state_changed
+	_on_node_connection_state_changed,
+	_on_node_no_longer_unknown
 ]).set_prefix("_on_node_")
 
 
@@ -371,3 +372,8 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 		ConstellationNode.ConnectionState.CONNECTED:
 			if p_node.is_sesion_master():
 				_network.get_local_node().connected_to_session_master.emit()
+
+
+## Called when any node in this session is found on the network, when previousley unknown
+func _on_node_no_longer_unknown(p_node: ConstellationNode) -> void:
+	node_joined.emit(p_node)

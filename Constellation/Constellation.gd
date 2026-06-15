@@ -318,7 +318,7 @@ func leave_session() -> bool:
 	for node: ConstellationNode in session.get_nodes():
 		node.disconnect_node()
 	
-	_session_connections.disconnect_object(_local_node.session)
+	_session_connections.disconnect_object(session)
 	return true
 
 

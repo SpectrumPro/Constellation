@@ -296,12 +296,17 @@ func _set_priority_order(p_node: ConstellationNode, p_position: int) -> int:
 	if p_position > len(_priority_order) - 1:
 		return -1
 	
-	_priority_order.remove_at(_priority_order.find(p_node))
+	var orignal_pos: int = _priority_order.find(p_node)
+	
+	_priority_order.remove_at(orignal_pos)
 	_priority_order.insert(p_position, p_node)
 	
-	var position: int = _priority_order.find(p_node)
+	for node_position: int in range(_priority_order.size()):
+		_priority_order[node_position].priority_changed.emit(node_position)
 	
+	var position: int = _priority_order.find(p_node)
 	priority_changed.emit(p_node, position)
+	
 	return position
 
 

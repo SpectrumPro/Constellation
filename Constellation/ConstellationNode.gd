@@ -122,8 +122,11 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	_settings.register_setting("Session", Data.Type.OBJECT, set_session, get_session, [session_changed])\
 	.display("NetworkNode", 2).set_class_filter(NetworkItem, ConstellationSession)
 	
-	_settings.register_status("Ping", Data.Type.FLOAT, get_ping_time, [ping_changed])\
+	_settings.register_setting("Priority", Data.Type.INT, set_priority, get_priority, [priority_changed])\
 	.display("NetworkNode", 3)
+	
+	_settings.register_status("Ping", Data.Type.FLOAT, get_ping_time, [ping_changed])\
+	.display("NetworkNode", 4)
 	
 	_settings.register_setting("RoleFlags", Data.Type.BITFLAGS, set_role_flags, get_role_flags, [role_flags_changed])\
 	.display("ConstellationNode", 0).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)

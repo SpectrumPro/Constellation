@@ -594,12 +594,17 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST) -> E
 ## Sends a sessions anouncement message
 func _send_session_anouncement(p_session: ConstellationSession, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
 	var message: ConstaNetSessionAnnounce = ConstaNetSessionAnnounce.new()
+	var nodes: Array[NetworkNode] = p_session.get_nodes()
+	
+	var node_ids: Array[String] = Array(nodes.map(func (p_node: ConstellationNode): 
+		return p_node.get_node_id()
+	), TYPE_STRING, "", null)
 	
 	message.origin_id = get_node_id()
 	message.session_master = get_node_id()
 	message.session_id = p_session.get_session_id()
 	message.session_name = p_session.get_session_name()
-	message.nodes = [get_node_id()]
+	message.nodes = node_ids
 	message.flags = p_flags
 	
 	return _send_message_mcast(message)

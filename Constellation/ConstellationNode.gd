@@ -113,9 +113,6 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	super._init(p_uuid, p_args)
 	_set_class_name("ConstellationNode")
 	
-	_settings.register_setting("Name", Data.Type.STRING, set_node_name, get_node_name, [name_changed])\
-	.display("NetworkItem", 0)
-	
 	_settings.register_status("ConnectionState", Data.Type.ENUM, get_connection_state, [connection_state_changed], ConnectionState)\
 	.display("NetworkNode", 1)
 	

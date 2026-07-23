@@ -34,7 +34,10 @@ static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) ->
 	
 	for node_id: String in p_message.nodes:
 		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
-		if node:
+		
+		if node.is_local():
+			_network.join_session(session)
+		else:
 			session._add_node(node)
 	
 	return session

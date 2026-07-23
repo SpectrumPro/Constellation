@@ -544,6 +544,16 @@ func _auto_create_session() -> void:
 	create_session(_local_node.get_node_name() + "'s Session")
 
 
+## Attempts to connect to the givens session if all autoconnect checks pass
+func _attempt_session_auto_connect(p_session: ConstellationSession) -> void:
+	if (
+		ConstellationConfig.session_auto_rejoin
+		and not _local_node.get_session()
+		and ConstellationConfig.session_id == p_session.get_session_id() 
+	):
+		join_session(p_session)
+
+
 ## Creates a discovery message
 func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetDiscovery:
 	var message: ConstaNetDiscovery = ConstaNetDiscovery.new()
@@ -739,8 +749,7 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 	session.delete_requested.connect(_on_session_delete_request)
 	session_created.emit(session)
 	
-	if ConstellationConfig.session_auto_rejoin and not _local_node.get_session() and ConstellationConfig.session_id == session.get_session_id():
-		join_session(session)
+	_attempt_session_auto_connect(session)
 
 
 ## Handles a ConstaNetSessionSetPriority

@@ -35,7 +35,6 @@ enum Flags {
 	ACKNOWLEDGMENT		= 1 << 1,	# This message is responding to a request
 	ERROR				= 1 << 2,	# This message contains an error
 	ANNOUNCEMENT		= 1 << 3,	# This message contains new or updated infomation
-	RETRANSMISSION		= 1 << 4,	# This message has been re-transmitted from a RelayServer
 }
 
 ## Enum for network roles
@@ -252,14 +251,6 @@ func set_announcement(p_state: bool) -> void:
 		flags &= ~Flags.ANNOUNCEMENT
 
 
-## Sets this ConstaNet message's Retransmission flag
-func set_retransmission(p_state: bool) -> void:
-	if p_state:
-		flags |= Flags.RETRANSMISSION
-	else:
-		flags &= ~Flags.RETRANSMISSION
-
-
 ## Returns true if the Request flag is set
 func is_request() -> bool:
 	return (flags & Flags.REQUEST) != 0
@@ -278,11 +269,6 @@ func is_error() -> bool:
 ## Returns true if the Announcement flag is set
 func is_announcement() -> bool:
 	return (flags & Flags.ANNOUNCEMENT) != 0
-
-
-## Returns true if the Retransmission flag is set
-func is_retransmission() -> bool:
-	return (flags & Flags.RETRANSMISSION) != 0
 
 
 ## parses a Dictionary

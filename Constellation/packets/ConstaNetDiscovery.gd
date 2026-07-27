@@ -114,8 +114,8 @@ func _get_as_packet() -> PackedByteArray:
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	var p_node_ip = type_convert(p_dict.get(A_NODE_IP, ""), TYPE_STRING)
 	var p_role_flags = type_convert(p_dict.get(A_ROLE_FLAGS, 0), TYPE_INT)
 	var p_tcp_port = type_convert(p_dict.get(A_TCP_PORT, 0), TYPE_INT)
@@ -129,8 +129,8 @@ func _phrase_dict(p_dict: Dictionary) -> void:
 	node_name = p_node_name
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESAGE_LENGTH_NO_NAME:
 		return
 	

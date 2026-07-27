@@ -84,8 +84,8 @@ func _get_as_packet() -> PackedByteArray:
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	var p_data_type = type_convert(p_dict.get(A_DATA_TYPE, TYPE_NIL), TYPE_INT)
 	var p_command = type_convert(str_to_var(p_dict.get(A_COMMAND, "")), p_data_type)
 	var p_in_session = type_convert(p_dict.get(A_IN_SESSION, ""), TYPE_STRING)
@@ -95,8 +95,8 @@ func _phrase_dict(p_dict: Dictionary) -> void:
 	in_session = p_in_session
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MSG_LENGTH_NO_COMMAND:
 		return
 	

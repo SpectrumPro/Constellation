@@ -51,15 +51,15 @@ func _get_as_packet() -> PackedByteArray:
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	var p_mode = type_convert(p_dict.get(A_MODE, Mode.UNKNOWN), TYPE_INT)
 	
 	mode = p_mode
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_LENGTH:
 		return
 	

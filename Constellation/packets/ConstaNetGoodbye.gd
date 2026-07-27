@@ -55,13 +55,13 @@ func _get_as_packet() -> PackedByteArray:
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	reason = type_convert(p_dict.get(A_REASON, ""), TYPE_STRING)
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_LENGTH_NO_REASON:
 		return
 	

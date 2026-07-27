@@ -652,7 +652,7 @@ func _handle_packet_frame(p_peer: StreamPeerTCP) -> void:
 
 ## Handles a packet as a PackedByteArray
 func _handle_packet(p_packet: PackedByteArray, p_source: StreamPeerTCP = null) -> void:
-	var message: ConstaNetHeadder = ConstaNetHeadder.phrase_packet(p_packet)
+	var message: ConstaNetHeadder = ConstaNetHeadder.parse_packet(p_packet)
 	
 	if message.is_valid() and message.origin_id != _local_node.get_node_id():
 		_handle_message(message, p_source)

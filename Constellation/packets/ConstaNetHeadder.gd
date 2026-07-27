@@ -282,8 +282,8 @@ func is_retransmission() -> bool:
 	return (flags & Flags.RETRANSMISSION) != 0
 
 
-## Phrases a Dictionary
-static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
+## parses a Dictionary
+static func parse_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	var message: ConstaNetHeadder
 	
 	var p_origin_version: int = type_convert(p_dict.get(A_PROTO_VERSION, -1), TYPE_INT)
@@ -302,23 +302,23 @@ static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
 	
-	message._phrase_dict(p_dict)
+	message._parse_dict(p_dict)
 	
 	return message
 
 
-## Phrases a String
-static func phrase_string(p_string: String) -> ConstaNetHeadder:
+## parses a String
+static func parse_string(p_string: String) -> ConstaNetHeadder:
 	var data: Variant = JSON.parse_string(p_string)
 	
 	if not data:
 		return ConstaNetHeadder.new()
 	
-	return phrase_dict(data)
+	return parse_dict(data)
 
 
-## Phrases a PackedByteArray
-static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
+## parses a PackedByteArray
+static func parse_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	if not is_packet_valid(p_packet):
 		return ConstaNetHeadder.new()
 	
@@ -343,7 +343,7 @@ static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
 	
-	message._phrase_packet(p_packet.slice(HEADDER_LENGTH))
+	message._parse_packet(p_packet.slice(HEADDER_LENGTH))
 	return message
 
 
@@ -431,13 +431,13 @@ func _get_as_packet() -> PackedByteArray:
 	return []
 
 
-## Override this function to provide a method to phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## Override this function to provide a method to parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	pass
 
 
-## Override this function to provide a method to phrases a Dictionary
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## Override this function to provide a method to parses a Dictionary
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	pass
 
 

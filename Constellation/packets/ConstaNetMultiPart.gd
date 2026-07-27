@@ -98,8 +98,8 @@ func _get_as_packet() -> PackedByteArray:
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	var p_multi_part_id = type_convert(p_dict.get(A_PART_ID, 0), TYPE_STRING)
 	var p_num_of_chunks = type_convert(p_dict.get(A_NUM_CHUNKS, 0), TYPE_INT)
 	var p_chunk_id = type_convert(p_dict.get(A_CHUNK_ID, 0), TYPE_INT)
@@ -111,8 +111,8 @@ func _phrase_dict(p_dict: Dictionary) -> void:
 	data = p_data
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_SIZE_NO_DATA:
 		return
 	

@@ -98,6 +98,7 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MSG_LENGTH_NO_COMMAND:
+		_network._log_warnr("Unable to parse ConstaNetCommand. Packet too short!")
 		return
 	
 	var p_in_session: String = decode_node_id(O_IN_SESSION, p_packet)
@@ -105,6 +106,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var p_data_length: int = p_packet.decode_u32(O_DATA_LENGTH)
 	
 	if p_packet.size() < O_COMMAND + p_data_length:
+		_network._log_warn("Unable to parse ConstaNetCommand. (p_packet.size() < O_COMMAND + p_data_length) == true")
 		return
 	
 	var p_command: PackedByteArray = p_packet.slice(O_COMMAND, O_COMMAND + p_data_length)

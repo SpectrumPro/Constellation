@@ -132,6 +132,7 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_LENGTH:
+		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. Packet too short!")
 		return
 	
 	var p_session_id: String = decode_node_id(O_SESSION_ID, p_packet)
@@ -139,6 +140,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var p_name_length: int = p_packet.decode_u16(O_SESSION_NAME_LENGTH)
 	
 	if p_packet.size() < O_SESSION_NAME + p_name_length:
+		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < O_SESSION_NAME + p_name_length) == true")
 		return
 	
 	var p_session_name: String = decode_block(
@@ -151,20 +153,15 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var p_num_nodes: int = p_packet.decode_u16(O_NUM_NODES + offset)
 	
 	if p_packet.size() < (p_num_nodes * NODE_ID_LENGTH) + offset:
+		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < (p_num_nodes * NODE_ID_LENGTH) + offset) == true")
 		return
 	
 	var p_nodes: Array[String] = []
 	p_nodes.resize(p_num_nodes)
 	
-	print("".join(Array(p_packet).map(func (byte: int):
-		return char(byte)
-	)))
-	
 	for index: int in range(0, p_num_nodes):
 		p_nodes[index] = decode_node_id(O_NODES + offset, p_packet)
 		offset += NODE_ID_LENGTH
-	
-	print("Nodes: ", p_nodes)
 	
 	session_id = p_session_id
 	session_master = p_session_master

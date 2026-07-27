@@ -132,6 +132,7 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESAGE_LENGTH_NO_NAME:
+		_network._log_warn("Unable to parse ConstaNetDiscovery. Packet too short!")
 		return
 	
 	var p_node_ip: String = decode_ipv4(O_NODE_IP, p_packet)
@@ -142,6 +143,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var p_name_length: int = p_packet.decode_u16(O_NAME_LENGTH)
 	
 	if p_packet.size() < O_NODE_NAME + p_name_length:
+		_network._log_warn("Unable to parse ConstaNetDiscovery. (p_packet.size() < O_NODE_NAME + p_name_length) == true")
 		return
 	
 	var p_node_name: String = decode_block(

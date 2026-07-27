@@ -91,12 +91,14 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_SIZE:
+		_network._log_warn("Unable to parse ConstaNetSetAttribute. Packet too short!")
 		return
 	
 	var p_attribute: int = p_packet.decode_u16(O_ATTRIBUTE)
 	var p_value_length: int = p_packet.decode_u16(O_VALUE_LENGTH)
 	
 	if p_packet.size() < O_VALUE + p_value_length:
+		_network._log_warn("Unable to parse ConstaNetSetAttribute. (p_packet.size() < O_VALUE + p_value_length) == true")
 		return
 	
 	var p_value: String = decode_block(

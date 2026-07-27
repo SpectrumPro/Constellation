@@ -114,6 +114,7 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_SIZE_NO_DATA:
+		_network._log_warn("Unable to parse ConstaNetMultiPart. Packet too short!")
 		return
 	
 	var p_part_id: String = decode_node_id(O_PART_ID, p_packet)
@@ -123,6 +124,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var p_data_length: int = p_packet.decode_u32(O_DATA_LENGTH)
 	
 	if p_packet.size() < O_DATA_BLOCK + p_data_length:
+		_network._log_warn("Unable to parse ConstaNetMultiPart. (p_packet.size() < O_DATA_BLOCK + p_data_length) == true")
 		return
 	
 	var p_data_block: PackedByteArray = decode_block(

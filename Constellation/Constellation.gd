@@ -103,6 +103,7 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	
 	ConstellationNode._network = self
 	ConstellationSession._network = self
+	ConstaNetHeadder._network = self
 	
 	_local_node = ConstellationNode.create_local_node()
 	_local_node.name_changed.connect(_on_local_node_name_changed)
@@ -205,7 +206,7 @@ func start_node() -> Error:
 	_bind_network()
 	
 	if _network_state != NetworkState.BOUND:
-		_log("Error staring network")
+		_log_error("Error staring network")
 		return FAILED
 	
 	_set_network_state(NetworkState.READY)
@@ -257,7 +258,7 @@ func create_session(p_name: String) -> NetworkSession:
 	if not p_name or _network_state != NetworkState.READY:
 		return null
 	
-	_logv("Creating new Session with name: \"", p_name, "\"")
+	_logv("Creating new ConstellationSession with name: \"", p_name, "\"")
 	var session: ConstellationSession = ConstellationSession.new()
 	
 	session._set_name(p_name)
@@ -287,6 +288,7 @@ func join_session(p_session: NetworkSession) -> bool:
 	for node: ConstellationNode in p_session.get_nodes():
 		node.connect_node()
 	
+	_logv("Joining ConstellationSession: ", p_session.get_uname())
 	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
 	
 	message.origin_id = get_node_id()
@@ -304,6 +306,8 @@ func join_session(p_session: NetworkSession) -> bool:
 func leave_session() -> bool:
 	if not _local_node.get_session():
 		return false
+	
+	_logv("Leaving ConstellationSession: ", _local_node.get_session().get_uname())
 	
 	var message: ConstaNetSessionLeave = ConstaNetSessionLeave.new()
 	var session: ConstellationSession = _local_node.get_session()
@@ -395,11 +399,12 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 		if _unknown_sessions.has(p_session_id):
 			return _unknown_sessions[p_session_id]
 		
-		var session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
+		var unknown_session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
 		
-		_unknown_sessions[p_session_id] = session
+		_unknown_sessions[p_session_id] = unknown_session
+		_log("Unable to find ConstellationSession: \"", unknown_session.get_node_id(), "\" localy. Creating unknown session")
 		
-		return session
+		return unknown_session
 	
 	return _known_sessions.get(p_session_id)
 
@@ -416,7 +421,7 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 		var unknown_node: ConstellationNode = ConstellationNode.create_unknown_node(p_node_id)
 		
 		_unknown_nodes[p_node_id] = unknown_node
-		_log("Creating unknown node: ", unknown_node.get_node_id())
+		_logv("Unable to find ConstellationNode: \"", unknown_node.get_node_id(), "\" localy. Creating unknown node")
 		
 		return unknown_node
 	
@@ -441,7 +446,7 @@ func _set_network_state(p_network_state: NetworkState) -> bool:
 	if p_network_state == _network_state:
 		return false
 	
-	_logv("NetworkStage changed to: ", NetworkState.keys()[p_network_state])
+	_logv("NetworkState changed to: ", NetworkState.keys()[p_network_state])
 	
 	_network_state = p_network_state
 	network_state_changed.emit(_network_state, _network_state_err_code if _network_state == NetworkState.ERROR else OK)
@@ -463,7 +468,25 @@ func _log(...args) -> void:
 		print(_get_log_prefix(), "".join(args))
 
 
-## Logs to the console verbose
+## Logs a warning to the console
+func _log_warn(...args) -> void:
+	if ConstellationConfig.custom_loging_method_warn.is_valid():
+		ConstellationConfig.custom_loging_method_warn.callv([_get_log_prefix()] + args)
+	
+	else:
+		push_warning(_get_log_prefix(), "".join(args))
+
+
+## Logs an error to the console
+func _log_error(...args) -> void:
+	if ConstellationConfig.custom_loging_method_error.is_valid():
+		ConstellationConfig.custom_loging_method_error.callv([_get_log_prefix()] + args)
+	
+	else:
+		push_error(_get_log_prefix(), "".join(args))
+
+
+## Logs to the console's verbose output
 func _logv(...args) -> void:
 	if ConstellationConfig.custom_loging_method_verbose.is_valid():
 		ConstellationConfig.custom_loging_method_verbose.callv([_get_log_prefix()] + args)
@@ -491,14 +514,14 @@ func _bind_network() -> void:
 	var udp_error: Error = _udp_socket.bind(0)
 	
 	if tx_bind_error or rx_bind_error or tx_config_error or rx_config_error or tcp_error or udp_error:
-		_log("TX Bind Error: ", error_string(tx_bind_error))
-		_log("RX Bind Error: ", error_string(rx_bind_error))
+		_log_error("TX Bind Error: ", error_string(tx_bind_error))
+		_log_error("RX Bind Error: ", error_string(rx_bind_error))
 		
-		_log("TX Config Error: ", error_string(tx_config_error))
-		_log("RX Config Error: ", error_string(rx_config_error))
+		_log_error("TX Config Error: ", error_string(tx_config_error))
+		_log_error("RX Config Error: ", error_string(rx_config_error))
 		
-		_log("TCP Bind Error: ", error_string(tcp_error))
-		_log("UDP Bind Error: ", error_string(udp_error))
+		_log_error("TCP Bind Error: ", error_string(tcp_error))
+		_log_error("UDP Bind Error: ", error_string(udp_error))
 		
 		_network_state_err_code = ERR_ALREADY_IN_USE
 		_set_network_state(NetworkState.ERROR)
@@ -551,6 +574,7 @@ func _attempt_session_auto_connect(p_session: ConstellationSession) -> void:
 		and not _local_node.get_session()
 		and ConstellationConfig.session_id == p_session.get_session_id() 
 	):
+		_logv("A ConstellationSession has been discovered on the network. Initializing auto-join")
 		join_session(p_session)
 
 
@@ -577,7 +601,7 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
 	
-	_logv("Sending MCAST message, type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
+	_logv("Sending MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
 	return tx_error
 
 
@@ -705,12 +729,12 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 		node._mark_as_unknown(false)
 		
 		_unknown_nodes.erase(p_discovery.origin_id)
-		_log("Using unknown node: ", node.get_node_id())
+		_log("Previously unknown ConstellationNode: ", node.get_node_id(), " has been found on the network")
 	
 	else:
 		node = ConstellationNode.create_from_discovery(p_discovery)
 	
-	_logv("Found new node on network: ", node.get_node_name())
+	_logv("New ConstellationNode: \"", node.get_node_name(), "\" has been discovered on the network")
 	_known_nodes[p_discovery.origin_id] = node
 	
 	add_child(node)
@@ -738,12 +762,12 @@ func _handle_session_announce_message(p_message: ConstaNetSessionAnnounce) -> vo
 		session._update_with(p_message)
 		
 		_unknown_sessions.erase(p_message.session_id)
-		_log("Using unknown session: ", session.get_session_id())
+		_log("Previously unknown ConstellationSession: ", session.get_session_id(), " has been found on the network")
 	
 	else:
 		session = ConstellationSession.create_from_session_announce(p_message)
 	
-	_logv("Found new session on network: ", session.get_session_name())
+	_logv("New ConstellationSession: \"", session.get_uname(), "\" has been discovered on the network")
 	_known_sessions[session.get_session_id()] = session
 	
 	session.delete_requested.connect(_on_session_delete_request)
@@ -821,7 +845,7 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 		p_multi_part.free()
 	
 	elif Time.get_unix_time_from_system() - p_multi_part.last_seen > MULTI_PART_MAX_WAIT:
-		_logv("Dropping multipart ", p_multi_part.id, " due to timeout")
+		_logv("Dropping multipart ", p_multi_part.id, ". Max timeout exceeded")
 		_active_multi_parts.erase(p_multi_part.id)
 		p_multi_part.free()
 
@@ -873,7 +897,7 @@ func _on_session_delete_request(p_session: ConstellationSession) -> void:
 func _on_current_session_node_joined(p_node: ConstellationNode) -> void:
 	if not p_node.is_in_connection_state():
 		p_node.connect_node()
-		_logv("Auto connecting to node: ", p_node.get_node_name(), ". It is now known, and in current session")
+		_logv("A new ConstellationNode: \"", p_node.get_node_name(), "\" has joined the current session. Initalizing auto-connect")
 
 
 ## Called when the refresh timer times out
@@ -900,6 +924,12 @@ class ConstellationConfig extends Object:
 	
 	## Defines a custom callable to call when logging infomation
 	static var custom_loging_method: Callable = Callable()
+	
+	## Defines a custom callable to call when logging a warning
+	static var custom_loging_method_warn: Callable = Callable()
+	
+	## Defines a custom callable to call when logging an error
+	static var custom_loging_method_error: Callable = Callable()
 	
 	## Defines a custom callable to call when logging infomation verbosely
 	static var custom_loging_method_verbose: Callable = Callable()
@@ -951,6 +981,9 @@ class ConstellationConfig extends Object:
 		var config: Dictionary = script.get("config")
 		
 		custom_loging_method = type_convert(config.get("custom_loging_method", custom_loging_method), TYPE_CALLABLE)
+		custom_loging_method_warn = type_convert(config.get("custom_loging_method_warn", custom_loging_method_warn), TYPE_CALLABLE)
+		custom_loging_method_error = type_convert(config.get("custom_loging_method_error", custom_loging_method_error), TYPE_CALLABLE)
+		
 		custom_loging_method_verbose = type_convert(config.get("custom_loging_method_verbose", custom_loging_method_verbose), TYPE_CALLABLE)
 		log_prefix = type_convert(config.get("log_prefix", log_prefix), TYPE_STRING)
 		

@@ -162,6 +162,9 @@ var target_id: String
 ## Version number of the orignal message
 var _origin_version: int = 0
 
+## The Constellation CoreGlobal instance
+static var _network: Constellation
+
 
 ## Gets this ConstaNETHeadder as a Dictionary
 func get_as_dict() -> Dictionary[String, Variant]:
@@ -320,6 +323,7 @@ static func parse_string(p_string: String) -> ConstaNetHeadder:
 ## parses a PackedByteArray
 static func parse_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	if not is_packet_valid(p_packet):
+		_network._log_warn("Unable to parse packet. Invalid header!")
 		return ConstaNetHeadder.new()
 	
 	var p_version: int = p_packet.decode_u16(O_PROTO_VERSION)

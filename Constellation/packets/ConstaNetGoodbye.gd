@@ -63,11 +63,13 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_LENGTH_NO_REASON:
+		_network._log_warn("Unable to parse ConstaNetGoodbye. Packet too short!")
 		return
 	
 	var p_reason_length: int = p_packet.decode_u16(O_REASON_LENGTH)
 	
 	if p_packet.size() < O_REASON_STRING + p_reason_length:
+		_network._log_warn("Unable to parse ConstaNetGoodbye. (p_packet.size() < O_REASON_STRING + p_reason_length) == true")
 		return
 	
 	var p_reason_string: String = decode_block(

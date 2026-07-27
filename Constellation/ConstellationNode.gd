@@ -158,12 +158,10 @@ func connect_node() -> Error:
 	if _connection_state == ConnectionState.CONNECTED:
 		disconnect_node()
 	
-	_network._logv("Connecting TCP to: " ,_name, "@", _node_ip, ":", _node_tcp_port)
-	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)
 	
-	_network._logv("TCP connection began with errcode: ", error_string(err_code))
+	_network._logv("Initalizing TCP connection to: " ,_name, "@", _node_ip, ":", _node_tcp_port, " errcode: ", error_string(err_code))
 	
 	if err_code:
 		_set_connection_status(ConnectionState.CONNECTION_ERROR)
@@ -175,6 +173,7 @@ func connect_node() -> Error:
 
 ## Disconnects TCP from this node
 func disconnect_node() -> void:
+	_network._logv("Disconnecting TCP from ConstellationNode: \"", _name, "\"")
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 
@@ -395,7 +394,7 @@ func _set_connection_status(p_status: ConnectionState) -> bool:
 	if _connection_state == p_status:
 		return false
 	
-	_network._logv("Setting ConnectionState to remote node: ", get_uname(), ", to: ", ConnectionState.keys()[p_status])
+	_network._logv("ConnectionStatus to remote ConstellationNode: \"", get_uname(), "\" has changed to: ", ConnectionState.keys()[p_status])
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
 	
@@ -416,7 +415,6 @@ func _set_node_name(p_node_name: String) -> bool:
 	if p_node_name == _name:
 		return false
 	
-	_network._logv("Changing name from: \"", get_uname(), "\", to: \"", p_node_name, "\"")
 	_name = p_node_name
 	name_changed.emit(_name)
 	
@@ -685,7 +683,7 @@ func _use_stream(p_stream: StreamPeerTCP) -> void:
 	if _tcp_socket == p_stream or is_local():
 		return
 	
-	_network._logv("Changing StreamPeerTCP object for: ", get_uname())
+	_network._logv("Changing StreamPeerTCP object for ConstellationNode: \"", get_uname(), "\"")
 	
 	_tcp_socket.disconnect_from_host()
 	_tcp_socket = p_stream
@@ -718,10 +716,10 @@ func _handle_tcp_status_error() -> void:
 
 ## Runs a refresh step
 func _refresh() -> void:
-	_network._logv("Last seen delta to: ", get_node_name(), " is: ", _ping)
+	_network._logv("Last seen delta to: \"", get_node_name(), "\" is: ", snappedf(_ping, 0.001), "ms")
 	
 	if not _has_received_heartbeat_ack:
-		_network._log(get_node_name(), "took too long to respond")
+		_network._log("ConstellationNode: \"", get_node_name(), "\" has taken too long to respond")
 		_set_connection_status(ConnectionState.LOST_CONNECTION)
 	
 	_has_received_heartbeat_ack = false

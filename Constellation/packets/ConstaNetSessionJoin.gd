@@ -52,6 +52,7 @@ func _parse_dict(p_dict: Dictionary) -> void:
 ## parses a PackedByteArray
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	if p_packet.size() < MESSAGE_LENGTH:
+		_network._log_warn("Unable to parse ConstaNetSessionJoin. Packet too short!")
 		return
 	
 	var p_session_id = decode_node_id(O_SESSION_ID, p_packet)

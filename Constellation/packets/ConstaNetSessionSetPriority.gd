@@ -5,6 +5,40 @@ class_name ConstaNetSessionSetPriority extends ConstaNetHeadder
 ## ConstaNET Session Set Priority message
 
 
+## Byte length for the session ID
+const T_SESSION_ID: DataType = DataType.NODEID
+
+## Byte length for the node ID
+const T_NODE_ID: DataType = DataType.NODEID
+
+## Byte length for the position
+const T_POSITION: DataType = DataType.UINT16
+
+
+## Byte offset for the session ID
+const O_SESSION_ID: int = 0
+
+## Byte offset for the node ID
+const O_NODE_ID: int = O_SESSION_ID + T_SESSION_ID
+
+## Byte offset for the position
+const O_POSITION: int = O_NODE_ID + T_NODE_ID
+
+
+## String attribute for the session ID
+const A_SESSION_ID: String = "session_id"
+
+## String attribute for the node ID
+const A_NODE_ID: String = "node_id"
+
+## String attribute for the position
+const A_POSITION: String = "position"
+
+
+## Message size, fixed
+const MESSAGE_SIZE: int = O_POSITION + T_POSITION
+
+
 ## The UUID of this session
 var session_id: String
 
@@ -12,7 +46,7 @@ var session_id: String
 var node_id: String
 
 ## The position in the order to move it to
-var position: int = - 1
+var position: int = -1
 
 
 ## Init
@@ -23,45 +57,48 @@ func _init() -> void:
 ## Gets this ConstaNetSessionSetPriority as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"id": session_id,
-		"node_id": node_id,
-		"position": position
+		A_SESSION_ID: session_id,
+		A_NODE_ID: node_id,
+		A_POSITION: position
 	}
 
 
 ## Gets this ConstaNetSessionSetMaster as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
+	result.resize(MESSAGE_SIZE)
 	
-	result.append_array(get_id_as_buffer(session_id))
-	result.append_array(get_id_as_buffer(node_id))
-	result.append_array(ba(position, 2))
+	encode_node_id(O_SESSION_ID, session_id, result)
+	encode_node_id(O_NODE_ID, node_id, result)
+	result.encode_u16(O_POSITION, position)
 	
 	return result
 
 
 ## Phrases a Dictionary
 func _phrase_dict(p_dict: Dictionary) -> void:
-	session_id = type_convert(p_dict.get("id", ""), TYPE_STRING)
-	node_id = type_convert(p_dict.get("node_id", ""), TYPE_STRING)
-	position = type_convert(p_dict.get("position", -1), TYPE_INT)
+	var p_session_id = type_convert(p_dict.get(A_SESSION_ID, ""), TYPE_STRING)
+	var p_node_id = type_convert(p_dict.get(A_NODE_ID, ""), TYPE_STRING)
+	var p_position = type_convert(p_dict.get(A_POSITION, -1), TYPE_INT)
+	
+	session_id = p_session_id
+	node_id = p_node_id
+	position = p_position
 
 
 ## Phrases a PackedByteArray
 func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < NODE_ID_LENGTH + NODE_ID_LENGTH + 2:
+	if p_packet.size() < MESSAGE_SIZE:
 		return
 	
-	var offset: int = 0
 	
-	session_id = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
-	offset += NODE_ID_LENGTH
+	var p_session_id: String = decode_node_id(O_SESSION_ID, p_packet)
+	var p_node_id: String = decode_node_id(O_NODE_ID, p_packet)
+	var p_position: int = p_packet.decode_u16(O_POSITION)
 	
-	node_id = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
-	offset += NODE_ID_LENGTH
-	
-	position = ba_to_int(p_packet, offset, 2)
-	offset += 2
+	session_id = p_session_id
+	node_id = p_node_id
+	position = p_position
 
 
 ## Checks if this ConstaNetSessionSetPriority is valid

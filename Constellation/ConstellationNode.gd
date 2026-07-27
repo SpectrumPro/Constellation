@@ -158,7 +158,7 @@ func connect_node() -> Error:
 	if _connection_state == ConnectionState.CONNECTED:
 		disconnect_node()
 	
-	_network._logv("Connecting TCP to ", _node_ip, ":", _node_tcp_port)
+	_network._logv("Connecting TCP to: " ,_name, "@", _node_ip, ":", _node_tcp_port)
 	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)

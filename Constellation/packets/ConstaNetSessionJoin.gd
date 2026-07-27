@@ -5,6 +5,19 @@ class_name ConstaNetSessionJoin extends ConstaNetHeadder
 ## ConstaNET Session Join message
 
 
+## Byte length for session_id
+const T_SESSION_ID: DataType = DataType.NODEID
+
+## Byte offset for session_id
+const O_SESSION_ID: int = 0
+
+## String attribute for session_id
+const A_SESSION_ID: String = "session_id"
+
+## Message length
+const MESSAGE_LENGTH: int = O_SESSION_ID + T_SESSION_ID
+
+
 ## The UUID of this session
 var session_id: String
 
@@ -17,33 +30,32 @@ func _init() -> void:
 ## Gets this ConstaNetSessionJoin as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"id": session_id,
+		A_SESSION_ID: session_id,
 	}
 
 
 ## Gets this ConstaNetSessionJoin as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
+	result.resize(MESSAGE_LENGTH)
 	
-	result.append_array(get_id_as_buffer(session_id))
-	
+	encode_node_id(O_SESSION_ID, session_id, result)
 	return result
 
 
 ## Phrases a Dictionary
 func _phrase_dict(p_dict: Dictionary) -> void:
-	session_id = type_convert(p_dict.get("id", ""), TYPE_STRING)
+	var p_session_id = type_convert(p_dict.get(A_SESSION_ID, ""), TYPE_STRING)
+	session_id = p_session_id
 
 
 ## Phrases a PackedByteArray
 func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < NODE_ID_LENGTH:
+	if p_packet.size() < MESSAGE_LENGTH:
 		return
 	
-	var offset: int = 0
-	
-	session_id = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
-	offset += NODE_ID_LENGTH
+	var p_session_id = decode_node_id(O_SESSION_ID, p_packet)
+	session_id = p_session_id
 
 
 ## Checks if this ConstaNetSessionJoin is valid

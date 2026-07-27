@@ -13,6 +13,19 @@ enum Mode {
 }
 
 
+## Byte length for the Mode
+const T_MODE: DataType = DataType.UINT16
+
+## Byte offset for the Mode
+const O_MODE: int = 0
+
+## String attribute for the Mode
+const A_MODE: String = "mode"
+
+## Message length
+const MESSAGE_LENGTH: int = O_MODE + T_MODE
+
+
 ## Type of attribute
 var mode: Mode = Mode.UNKNOWN
 
@@ -25,33 +38,33 @@ func _init() -> void:
 ## Gets this ConstaNetSetAttribute as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"mode": mode,
+		A_MODE: mode,
 	}
 
 
 ## Gets this ConstaNetSetAttribute as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
+	result.resize(MESSAGE_LENGTH)
 	
-	result.append_array(ba(mode, 2))
-	
+	result.encode_u16(O_MODE, mode)
 	return result
 
 
 ## Phrases a Dictionary
 func _phrase_dict(p_dict: Dictionary) -> void:
-	mode = type_convert(p_dict.get("mode", Mode.UNKNOWN), TYPE_INT)
+	var p_mode = type_convert(p_dict.get(A_MODE, Mode.UNKNOWN), TYPE_INT)
+	
+	mode = p_mode
 
 
 ## Phrases a PackedByteArray
 func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < 2:
+	if p_packet.size() < MESSAGE_LENGTH:
 		return
 	
-	var offset: int = 0
-	
-	mode = ba_to_int(p_packet, offset, 2) as Mode
-	offset += 2
+	var p_mode: int = p_packet.decode_u16(O_MODE)
+	mode = p_mode as Mode
 
 
 ## Checks if this ConstaNetDiscovery is valid

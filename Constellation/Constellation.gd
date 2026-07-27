@@ -637,7 +637,7 @@ func _handle_packet_frame(p_peer: StreamPeerTCP) -> void:
 	var packet: PackedByteArray = _tcp_buffers[p_peer]
 	
 	while ConstaNetHeadder.is_packet_valid(packet):
-		var length: int = ConstaNetHeadder.ba_to_int(packet, 1, 8)
+		var length: int = packet.decode_u64(ConstaNetHeadder.O_MSG_SIZE)
 		
 		if length <= 0 or packet.size() < length:
 			break

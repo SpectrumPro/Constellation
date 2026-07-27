@@ -5,6 +5,46 @@ class_name ConstaNetCommand extends ConstaNetHeadder
 ## ConstaNET Command packet
 
 
+## Byte length for in_session
+const T_IN_SESSION: DataType = DataType.NODEID
+
+## Byte length for data_type
+const T_DATA_TYPE: DataType = DataType.UINT16
+
+## Byte length for command size
+const T_DATA_LENGTH: DataType = DataType.UINT32
+
+## Byte length for the command
+const T_COMMAND: DataType = DataType.BLOCK
+
+
+## Byte offset for in_session
+const O_IN_SESSION: int = 0
+
+## Byte offset for data_type
+const O_DATA_TYPE: int = O_IN_SESSION + T_IN_SESSION
+
+## Byte offset for command size
+const O_DATA_LENGTH: int = O_DATA_TYPE + T_DATA_TYPE
+
+## Byte offset for command data
+const O_COMMAND: int = O_DATA_LENGTH + T_DATA_LENGTH
+
+
+## String attribute for command DataType
+const A_DATA_TYPE: String = "data_type"
+
+## String attribute for command data
+const A_COMMAND: String = "command"
+
+## String attribute for session filter
+const A_IN_SESSION: String = "in_session"
+
+
+## Length of this message, excluding the varibal command length
+const MSG_LENGTH_NO_COMMAND: int = O_COMMAND
+
+
 ## Datatype of the command
 var data_type: int = TYPE_NIL
 
@@ -23,57 +63,55 @@ func _init() -> void:
 ## Gets this ConstaNetCommand as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"data_type": data_type,
-		"command": var_to_str(command),
-		"in_session": in_session
+		A_IN_SESSION: in_session,
+		A_DATA_TYPE: data_type,
+		A_COMMAND: var_to_str(command),
 	}
 
 
 ## Gets this ConstaNetCommand as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
-	var command_bytes: PackedByteArray = var_to_bytes(command)
+	result.resize(MSG_LENGTH_NO_COMMAND)
 	
-	result.append_array(ba(data_type, 2))
-	result.append_array(ba(command_bytes.size(), 4))
+	encode_node_id(O_IN_SESSION, in_session, result)
+	result.encode_u16(O_DATA_TYPE, data_type)
+	
+	var command_bytes: PackedByteArray = var_to_bytes(command)
+	result.encode_u32(O_DATA_LENGTH, command_bytes.size())
 	result.append_array(command_bytes)
-	result.append_array(get_id_as_buffer(in_session))
 	
 	return result
 
 
 ## Phrases a Dictionary
 func _phrase_dict(p_dict: Dictionary) -> void:
-	data_type = type_convert(p_dict.get("data_type", 0), TYPE_INT)
-	command = type_convert(str_to_var(p_dict.get("command", "")), data_type)
-	in_session = type_convert(p_dict.get("in_session", ""), TYPE_STRING)
+	var p_data_type = type_convert(p_dict.get(A_DATA_TYPE, TYPE_NIL), TYPE_INT)
+	var p_command = type_convert(str_to_var(p_dict.get(A_COMMAND, "")), p_data_type)
+	var p_in_session = type_convert(p_dict.get(A_IN_SESSION, ""), TYPE_STRING)
+	
+	data_type = p_data_type
+	command = p_command
+	in_session = p_in_session
 
 
 ## Phrases a PackedByteArray
 func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < 6:
+	if p_packet.size() < MSG_LENGTH_NO_COMMAND:
 		return
 	
-	var offset: int = 0
-	var command_length: int = 0
-	 
-	data_type = ba_to_int(p_packet, offset, 2)
-	offset += 2
+	var p_in_session: String = decode_node_id(O_IN_SESSION, p_packet)
+	var p_data_type: int = p_packet.decode_u16(O_DATA_TYPE)
+	var p_data_length: int = p_packet.decode_u32(O_DATA_LENGTH)
 	
-	command_length = ba_to_int(p_packet, offset, 4)
-	offset += 4
-	
-	if p_packet.size() < offset + command_length:
+	if p_packet.size() < O_COMMAND + p_data_length:
 		return
 	
-	command = type_convert(bytes_to_var(p_packet.slice(offset, offset + command_length)), data_type)
-	offset += command_length
+	var p_command: PackedByteArray = p_packet.slice(O_COMMAND, O_COMMAND + p_data_length)
 	
-	if p_packet.size() < offset + NODE_ID_LENGTH:
-		return
-	
-	in_session = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
-	offset += NODE_ID_LENGTH
+	in_session = p_in_session
+	data_type = p_data_type as Variant.Type
+	command = type_convert(bytes_to_var(p_command), data_type)
 
 
 ## Checks if this ConstaNetCommand is valid

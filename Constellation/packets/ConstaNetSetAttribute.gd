@@ -5,6 +5,37 @@ class_name ConstaNetSetAttribute extends ConstaNetHeadder
 ## ConstaNET Set Arrtibute packet
 
 
+## Byte length for attribute
+const T_ATTRIBUTE: DataType = DataType.UINT16
+
+## Byte length for the value length
+const T_VALUE_LENGTH: DataType = DataType.UINT16
+
+## Byte length for value
+const T_VALUE: DataType = DataType.BLOCK
+
+
+## Byte offset for attribute
+const O_ATTRIBUTE: int = 0
+
+## Byte offset for value size
+const O_VALUE_LENGTH: int = O_ATTRIBUTE + T_ATTRIBUTE
+
+## Byte offset for value data
+const O_VALUE: int = O_VALUE_LENGTH + T_VALUE_LENGTH
+
+
+## String attribute for attribute
+const A_ATTRIBUTE: String = "attribute"
+
+## String attribute for value
+const A_VALUE: String = "value"
+
+
+## Message size, excluding the value
+const MESSAGE_SIZE: int = O_VALUE
+
+
 ## Attribute Enum
 enum Attribute {
 	UNKNOWN,		## Default State
@@ -29,19 +60,20 @@ func _init() -> void:
 ## Gets this ConstaNetSetAttribute as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"attribute": attribute,
-		"value": value
+		A_ATTRIBUTE: attribute,
+		A_VALUE: value
 	}
 
 
 ## Gets this ConstaNetSetAttribute as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
+	result.resize(MESSAGE_SIZE)
 	
-	result.append_array(ba(attribute, 2))
+	result.encode_u16(O_ATTRIBUTE, attribute)
 	
 	var value_bytes: PackedByteArray = value.to_ascii_buffer()
-	result.append_array(ba(value_bytes.size(), 2))
+	result.encode_u16(O_VALUE_LENGTH, value_bytes.size())
 	result.append_array(value_bytes)
 	
 	return result
@@ -49,29 +81,32 @@ func _get_as_packet() -> PackedByteArray:
 
 ## Phrases a Dictionary
 func _phrase_dict(p_dict: Dictionary) -> void:
-	attribute = type_convert(p_dict.get("attribute", 0), TYPE_INT)
-	value = type_convert(p_dict.get("value", ""), TYPE_STRING)
+	var p_attribute = type_convert(p_dict.get(A_ATTRIBUTE, 0), TYPE_INT)
+	var p_value = type_convert(p_dict.get(A_VALUE, ""), TYPE_STRING)
+	
+	attribute = p_attribute
+	value = p_value
 
 
 ## Phrases a PackedByteArray
 func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < 4:
+	if p_packet.size() < MESSAGE_SIZE:
 		return
 	
-	var offset: int = 0
-	var value_size: int = 0
+	var p_attribute: int = p_packet.decode_u16(O_ATTRIBUTE)
+	var p_value_length: int = p_packet.decode_u16(O_VALUE_LENGTH)
 	
-	attribute = ba_to_int(p_packet, offset, 2) as Attribute
-	offset += 2
-	
-	value_size = ba_to_int(p_packet, offset, 2)
-	offset += 2
-	
-	if p_packet.size() < offset + value_size:
+	if p_packet.size() < O_VALUE + p_value_length:
 		return
 	
-	value = p_packet.slice(offset, offset + value_size).get_string_from_ascii()
-	offset += value_size
+	var p_value: String = decode_block(
+		O_VALUE,
+		p_value_length,
+		p_packet
+	).get_string_from_ascii()
+	
+	attribute = p_attribute as Attribute
+	value = p_value
 
 
 ## Checks if this ConstaNetDiscovery is valid

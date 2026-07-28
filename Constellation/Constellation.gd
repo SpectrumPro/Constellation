@@ -285,20 +285,21 @@ func join_session(p_session: NetworkSession) -> bool:
 	if _local_node.get_session():
 		leave_session()
 	
-	for node: ConstellationNode in p_session.get_nodes():
-		node.connect_node()
-	
 	_logv("Joining ConstellationSession: ", p_session.get_uname())
-	var message: ConstaNetSessionJoin = ConstaNetSessionJoin.new()
+	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
 	
 	message.origin_id = get_node_id()
-	message.session_id = p_session.get_session_id()
-	message.set_request(true)
+	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	message.value = p_session.get_session_id()
+	message.set_announcement(true)
 	
 	_local_node._set_session(p_session)
 	_send_message_mcast(message)
-	
 	_session_connections.connect_object(p_session)
+	
+	for node: ConstellationNode in p_session.get_nodes():
+		node.connect_node()
+	
 	return true
 
 
@@ -309,20 +310,21 @@ func leave_session() -> bool:
 	
 	_logv("Leaving ConstellationSession: ", _local_node.get_session().get_uname())
 	
-	var message: ConstaNetSessionLeave = ConstaNetSessionLeave.new()
+	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
 	var session: ConstellationSession = _local_node.get_session()
 	_local_node._leave_session()
 	
 	message.origin_id = get_node_id()
-	message.session_id = session.get_session_id()
-	message.set_request(true)
+	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	message.value = ""
+	message.set_announcement(true)
 	
+	_session_connections.disconnect_object(session)
 	_send_message_mcast(message)
 	
 	for node: ConstellationNode in session.get_nodes():
 		node.disconnect_node()
 	
-	_session_connections.disconnect_object(session)
 	return true
 
 
@@ -402,7 +404,7 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 		var unknown_session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
 		
 		_unknown_sessions[p_session_id] = unknown_session
-		_log("Unable to find ConstellationSession: \"", unknown_session.get_node_id(), "\" localy. Creating unknown session")
+		_log("Unable to find ConstellationSession: \"", unknown_session.get_session_id(), "\" localy. Creating unknown session")
 		
 		return unknown_session
 	

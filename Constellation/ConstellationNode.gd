@@ -434,8 +434,15 @@ func _set_node_ip(p_node_ip: String) -> bool:
 
 ## Sets the nodes session
 func _set_session(p_session: ConstellationSession) -> bool:
-	if _session or not is_instance_valid(p_session):
+	if p_session == _session:
 		return false
+	
+	if not is_instance_valid(p_session):
+		_leave_session()
+		return false
+	
+	if _session:
+		leave_session()
 	
 	_session = p_session
 	_session._add_node(self)
@@ -542,12 +549,6 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 		MessageType.SESSION_ANNOUNCE when not is_local():
 			_handle_session_announce(p_message)
 		
-		MessageType.SESSION_JOIN when not is_local():
-			_handle_session_join(p_message)
-		
-		MessageType.SESSION_LEAVE when not is_local():
-			_handle_session_leave(p_message)
-		
 		MessageType.SET_ATTRIBUTE:
 			_handle_set_attribute(p_message)
 		
@@ -588,32 +589,25 @@ func _handle_session_announce(p_session_announce: ConstaNetSessionAnnounce) -> v
 		_set_session(_network.get_session_from_id(p_session_announce.session_id, true))
 
 
-## Handles a ConstaNetSessionJoin
-func _handle_session_join(p_session_join: ConstaNetSessionJoin) -> void:
-	_set_session(_network.get_session_from_id(p_session_join.session_id, true))
-
-
-## Handles a ConstaNetSessionLeave
-func _handle_session_leave(p_session_leave: ConstaNetSessionLeave) -> void:
-	_leave_session()
-
-
 ## Handles a ConstaNetSetAttribute
 func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 	match p_set_attribute.attribute:
 		ConstaNetSetAttribute.Attribute.NAME:
-			if is_local():
+			if is_local() and p_set_attribute.is_request():
 				set_node_name(p_set_attribute.value)
-			else:
+			elif p_set_attribute.is_announcement():
 				_set_node_name(p_set_attribute.value)
 		
-		ConstaNetSetAttribute.Attribute.SESSION when is_local():
-			var session: ConstellationSession = _network.get_session_from_id(p_set_attribute.value)
+		ConstaNetSetAttribute.Attribute.SESSION:
+			var session: ConstellationSession = _network.get_session_from_id(
+				p_set_attribute.value, 
+				true if p_set_attribute.value else false
+			)
 			
-			if is_instance_valid(session):
+			if is_local() and p_set_attribute.is_request():
 				_network.join_session(session)
-			else:
-				_network.leave_session()
+			elif p_set_attribute.is_announcement():
+				_set_session(session)
 
 
 ## Handles a ConstaNetHeartBeat

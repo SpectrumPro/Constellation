@@ -20,8 +20,6 @@ enum Type {
 	
 	SESSION_ANNOUNCE,		# Announces a new session
 	SESSION_DISCOVERY,		# Requests network nodes to anounce sessions
-	SESSION_JOIN,			# New node joining a session
-	SESSION_LEAVE,			# Node leaving a session
 	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session, name, master, ect..
 	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
 	
@@ -81,8 +79,6 @@ static var ClassTypes: Dictionary[int, Script] = {
 	
 	Type.SESSION_ANNOUNCE: 		ConstaNetSessionAnnounce,
 	Type.SESSION_DISCOVERY: 	ConstaNetSessionDiscovery,
-	Type.SESSION_JOIN: 			ConstaNetSessionJoin,
-	Type.SESSION_LEAVE: 		ConstaNetSessionLeave,
 	Type.SESSION_SET_ATTRIBUTE: ConstaNetSessionSetAttribute,
 	Type.SESSION_SET_PRIORITY: 	ConstaNetSessionSetPriority,
 }

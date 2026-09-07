@@ -717,8 +717,9 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 
 ## Handles a discovery message
 func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: StreamPeerTCP = null) -> void:
-	if p_discovery.is_request():
-		_log("Got Discovery REQ from: ", p_discovery.node_name)
+	if OS.is_stdout_verbose():
+		var flags_string: String = Utils.flags_to_string(p_discovery.flags, ConstaNetHeadder.Flags)
+		_log("Got Discovery ", flags_string, " from: ", p_discovery.node_name)
 	
 	if _known_nodes.has(p_discovery.origin_id):
 		return

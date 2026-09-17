@@ -21,6 +21,15 @@ const DISCO_INTERVAL: int = 10
 ## Time in seconds for a responce from a node or session before its deemed offline
 const DISCO_TIMEOUT: int = 2
 
+## Interval in seconds to check that the network link is up, link will be auto checked if any socker error is recieved
+const LINK_CHECK_INTERVAL: float = 5
+
+## Interval in seconds to check for network link when it is currently down
+const LINK_CHECK_ERROR_INTERVAL: float = 0.5
+
+## Time in seconds to delay the node restart after network link is back up
+const LINK_CHECK_RESTART_DELAY: float = 2
+
 ## Max time to wait in second for the next chunk of a multipart message to be recieved
 const MULTI_PART_MAX_WAIT: int = 10
 
@@ -59,6 +68,9 @@ var _connected_tcp_peers: Array[StreamPeerTCP]
 ## Stores RX data buffers for each connected StreamPeerTCP
 var _tcp_buffers: Dictionary[StreamPeerTCP, PackedByteArray]
 
+## True when the network interface and address have network link
+var _ip_link_up: bool = false
+
 ## Network Role
 var _role_flags: int = RoleFlags.EXECUTOR
 
@@ -80,6 +92,12 @@ var _session_auto_create_timer: Timer = Timer.new()
 ## Timer used when running a network refresh
 var _refresh_timer: Timer = Timer.new()
 
+## Timer used for the network link check
+var _link_check_timer: Timer = Timer.new()
+
+## Timer used to delay the auto restart when network link returns
+var _link_up_restart_delay: Timer = Timer.new()
+
 ## Stores all known devices by thier NodeID
 var _known_nodes: Dictionary[String, ConstellationNode] = {}
 
@@ -93,6 +111,7 @@ var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 var _session_connections: SignalGroup = SignalGroup.new([
 	_on_current_session_node_joined,
 ]).set_prefix("_on_current_session_")
+
 
 ## init
 func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
@@ -137,10 +156,22 @@ func _ready() -> void:
 	_refresh_timer.set_wait_time(DISCO_TIMEOUT)
 	_refresh_timer.timeout.connect(_on_refresh_timer_timeout)
 	
+	_link_check_timer.set_autostart(false)
+	_link_check_timer.set_one_shot(false)
+	_link_check_timer.set_wait_time(LINK_CHECK_INTERVAL)
+	_link_check_timer.timeout.connect(_on_link_check_timeout)
+	
+	_link_up_restart_delay.set_autostart(false)
+	_link_up_restart_delay.set_one_shot(true)
+	_link_up_restart_delay.set_wait_time(LINK_CHECK_RESTART_DELAY)
+	_link_up_restart_delay.timeout.connect(restart_node)
+	
 	add_child(_local_node)
 	add_child(_disco_timer)
 	add_child(_session_auto_create_timer)
 	add_child(_refresh_timer)
+	add_child(_link_check_timer)
+	add_child(_link_up_restart_delay)
 	
 	var cli_args: PackedStringArray = OS.get_cmdline_args()
 	if cli_args.has("--ctl-node-name"):
@@ -245,6 +276,13 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	return OK
 
 
+## Restarts this node, without notifying the rest of the network
+func restart_node() -> void:
+	_log("Restarting node")
+	stop_node(true)
+	start_node()
+
+
 ## Sends a command to the session, using p_node_filter as the NodeFilter
 func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER, p_nodes: Array[NetworkNode] = []) -> Error:
 	if not _local_node.get_session():
@@ -329,15 +367,20 @@ func leave_session() -> bool:
 
 
 ## Sets the IP and interface name from an IPAddr object
-func set_ip_and_interface(p_ipaddr: IPAddr) -> void:
+func set_ip_and_interface(p_ipaddr: IPAddr) -> bool:
 	if not p_ipaddr.is_valid():
-		return
+		return false
+	
+	if _network_state != NetworkState.OFFLINE:
+		_log("IP and Interface can not be changed while node is not NetworkState.OFFLINE")
+		return false
 	
 	ConstellationConfig.bind_address = p_ipaddr.get_address()
 	ConstellationConfig.bind_interface = p_ipaddr.get_interface()
 	
 	ip_and_interface_changed.emit(get_ip_and_interface())
 	ConstellationConfig.save_user_config()
+	return true
 
 
 ## Returns the IP and interface name as a IPAddr object
@@ -534,6 +577,9 @@ func _bind_network() -> void:
 		_log("TCP bound on port: ", _tcp_port)
 		_log("UDP bound on port: ", _udp_port)
 		
+		_ip_link_up = true
+		_link_check_timer.start()
+		
 		_set_network_state(NetworkState.BOUND)
 		set_process(true)
 
@@ -546,6 +592,8 @@ func _close_network() -> void:
 	_tcp_socket.stop()
 	_udp_socket.close()
 	
+	_ip_link_up = false
+	_link_check_timer.stop()
 	set_process(false)
 
 
@@ -602,8 +650,11 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 		return ERR_UNAVAILABLE
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
+	_logv("Sent MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
 	
-	_logv("Sending MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
+	if tx_error:
+		_check_network_link()
+	
 	return tx_error
 
 
@@ -862,6 +913,36 @@ func _refresh() -> void:
 		node._refresh()
 
 
+## Checks the link status of the network interface being used
+func _check_network_link() -> void:
+	var new_link_state: bool = false
+	
+	for interface: Dictionary in IP.get_local_interfaces():
+		if interface.name != ConstellationConfig.bind_interface:
+			continue
+		
+		if (interface.addresses as Array).has(ConstellationConfig.bind_address):
+			new_link_state = true
+			break
+	
+	if new_link_state == _ip_link_up:
+		return
+	
+	if new_link_state:
+		_log("Network link is back UP")
+		_link_up_restart_delay.start()
+		_link_check_timer.start(LINK_CHECK_INTERVAL)
+	
+	else:
+		_log_error("Network link is DOWN")
+		_set_network_state(NetworkState.ERROR)
+		
+		_link_up_restart_delay.stop()
+		_link_check_timer.start(LINK_CHECK_ERROR_INTERVAL)
+	
+	_ip_link_up = new_link_state
+
+
 ## Called when the node name is changed on the LocalNode
 func _on_local_node_name_changed(p_name: String) -> void:
 	ConstellationConfig.node_name = p_name
@@ -906,6 +987,11 @@ func _on_current_session_node_joined(p_node: ConstellationNode) -> void:
 ## Called when the refresh timer times out
 func _on_refresh_timer_timeout() -> void:
 	_refresh()
+
+
+## Called when the network link timer times out
+func _on_link_check_timeout() -> void:
+	_check_network_link()
 
 
 ## ConstellationConfig object

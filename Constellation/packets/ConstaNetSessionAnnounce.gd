@@ -69,8 +69,8 @@ var session_master: String
 ## The name of the session
 var session_name: String
 
-## All NodeIDs in this session
-var nodes: Array[String]
+## All nodes in this sesion, stored as {NodeID: priority}
+var nodes: Dictionary[String, int]
 
 
 ## Init
@@ -109,7 +109,12 @@ func _get_as_packet() -> PackedByteArray:
 	
 	result.encode_u16(O_NUM_NODES + offset, nodes.size())
 	for node_id: String in nodes:
-		result.append_array(get_id_as_buffer(node_id))
+		var id_buffer: PackedByteArray = get_id_as_buffer(node_id)
+		
+		id_buffer.resize(NODE_ID_LENGTH + DataType.INT16)
+		id_buffer.encode_u16(NODE_ID_LENGTH, nodes[node_id])
+		
+		result.append_array(id_buffer)
 	
 	return result
 
@@ -119,14 +124,14 @@ func _parse_dict(p_dict: Dictionary) -> void:
 	var p_session_id = type_convert(p_dict.get(A_SESSION_ID, ""), TYPE_STRING)
 	var p_session_master = type_convert(p_dict.get(A_SESSION_MASTER, ""), TYPE_STRING)
 	var p_session_name = type_convert(p_dict.get(A_SESSION_NAME, ""), TYPE_STRING)
-	var p_nodes: Array = type_convert(p_dict.get("nodes", []), TYPE_ARRAY)
+	var p_nodes: Dictionary = type_convert(p_dict.get("nodes", {}), TYPE_DICTIONARY)
 	
 	session_id = p_session_id
 	session_master = p_session_master
 	session_name = p_session_name
 	
-	for node: Variant in p_nodes:
-		nodes.append(str(node))
+	for node_id: Variant in p_nodes:
+		nodes[node_id] = type_convert(p_nodes[node_id], TYPE_INT)
 
 
 ## parses a PackedByteArray
@@ -152,16 +157,18 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var offset: int = p_name_length
 	var p_num_nodes: int = p_packet.decode_u16(O_NUM_NODES + offset)
 	
-	if p_packet.size() < (p_num_nodes * NODE_ID_LENGTH) + offset:
-		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < (p_num_nodes * NODE_ID_LENGTH) + offset) == true")
+	if p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + DataType.INT16)) + offset:
+		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + DataType.INT16)) + offset) == true")
 		return
 	
-	var p_nodes: Array[String] = []
-	p_nodes.resize(p_num_nodes)
+	var p_nodes: Dictionary[String, int] = {}
 	
 	for index: int in range(0, p_num_nodes):
-		p_nodes[index] = decode_node_id(O_NODES + offset, p_packet)
+		var node_id: String = decode_node_id(O_NODES + offset, p_packet)
 		offset += NODE_ID_LENGTH
+		
+		p_nodes[node_id] = p_packet.decode_s16(O_NODES + offset)
+		offset += DataType.INT16
 	
 	session_id = p_session_id
 	session_master = p_session_master

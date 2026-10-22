@@ -244,7 +244,7 @@ func send_message_tcp(p_message: ConstaNetHeadder) -> Error:
 	return ERR_CONNECTION_ERROR
 
 
-## Joins the given session
+## Joines the given session. If not self.is_local() a SetAttribute Attribute.SESSION message will be sent
 func join_session(p_session: NetworkSession) -> bool:
 	if not p_session or p_session == _session:
 		return false
@@ -261,7 +261,7 @@ func join_session(p_session: NetworkSession) -> bool:
 	return true
 
 
-## Leavs the current session
+## Leaves the current session. If not self.is_local() a SetAttribute Attribute.SESSION message will be sent
 func leave_session() -> bool:
 	if not get_session():
 		return false
@@ -435,47 +435,42 @@ func _set_node_ip(p_node_ip: String) -> bool:
 
 
 ## Sets the nodes session
-func _set_session(p_session: ConstellationSession) -> bool:
-	if p_session == _session:
-		return false
-	
-	if not is_instance_valid(p_session):
-		_leave_session()
-		return false
-	
+func _set_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
+	if is_instance_valid(p_session):
+		return _join_session(p_session, p_auto_priority, p_priority)
+	else:
+		return _leave_session()
+
+
+## Internal handler for joining a session
+func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if _session:
-		leave_session()
+		_leave_session()
+	
+	if not p_session:
+		return false
 	
 	_session = p_session
-	_session._add_node(self)
+	
+	if not _session.has_node_in_session(self):
+		print(_session.has_node_in_session(self))
+		print(_session._nodes)
+		_session._add_node(self, p_auto_priority, p_priority)
+	
+	session_changed.emit(_session)
+	session_joined.emit(_session)
 	
 	return true
 
 
-## Sets the nodes session, with out joining the session unlike _set_session
-func _set_session_no_join(p_session: ConstellationSession) -> void:
-	_session = p_session
-	
-	if p_session and p_session.get_session_master() == self:
-		_mark_as_session_master()
-	else:
-		_remove_session_master_mark()
-	
-	session_changed.emit(p_session)
-	
-	if p_session:
-		session_joined.emit(p_session)
-	else:
-		session_left.emit()
-
-
-## Leaves the current session
+## Internal handler for leaving a session
 func _leave_session() -> bool:
 	if not _session:
 		return false
 	
 	_session._remove_node(self)
 	_session = null
+	
 	session_left.emit()
 	session_changed.emit(null)
 	
@@ -587,8 +582,10 @@ func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 
 ## Handles a ConstaNetSessionAnnounce
 func _handle_session_announce(p_session_announce: ConstaNetSessionAnnounce) -> void:
-	if p_session_announce.is_announcement() and p_session_announce.nodes.has(_node_id):
-		_set_session(_network.get_session_from_id(p_session_announce.session_id, true))
+	pass
+	## TODO: Don't auto join session. If a session announce message is recieved with self as a member. Send a session leave message
+	#if p_session_announce.is_announcement() and p_session_announce.nodes.has(_node_id):
+		#_set_session(_network.get_session_from_id(p_session_announce.session_id, true))
 
 
 ## Handles a ConstaNetSetAttribute
@@ -603,7 +600,7 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 		ConstaNetSetAttribute.Attribute.SESSION:
 			var session: ConstellationSession = _network.get_session_from_id(
 				p_set_attribute.value, 
-				true if p_set_attribute.value else false
+				p_set_attribute.value.is_empty()
 			)
 			
 			if is_local() and p_set_attribute.is_request():

@@ -9,14 +9,21 @@ class_name ConstellationSession extends NetworkSession
 static var _network: Constellation = null
 
 
+## Max number of nodes allowed in a session
+const MAX_NODES: int = 65535
+
+
 ## All nodes in this session
 var _nodes: Array[ConstellationNode]
 
 ## The SessionID of this session
 var _session_id: String = UUID.v4()
 
-## Priority order
-var _priority_order: Array[ConstellationNode]
+## Refmap for storing a nodes priority as {priority: ConstellationNode}
+var _node_priorities: RefMap = RefMap.new()
+
+## Stores a sorted list of node prioritys
+var _priority_order: Array[int]
 
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
@@ -28,17 +35,26 @@ var _node_connections: SignalGroup = SignalGroup.new([
 ## Creates a new session from a ConstaNetSessionAnnounce message
 static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) -> ConstellationSession:
 	var session: ConstellationSession = ConstellationSession.new()
+	var nodes: Dictionary[String, int] = p_message.nodes
 	
 	session._set_session_id(p_message.session_id)
 	session._set_name(p_message.session_name)
 	
-	for node_id: String in p_message.nodes:
+	var add_node: Callable = (func(node_id: String) -> void:
 		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
-		
+		var priority: int = nodes[node_id]
 		if node.is_local():
-			_network.join_session(session)
+			_network.join_session(session, false, priority)
 		else:
-			session._add_node(node)
+			session._add_node(node, false, priority)
+	)
+	
+	if p_message.session_master:
+		add_node.call(p_message.session_master)
+		nodes.erase(p_message.session_master)
+	
+	for node_id: String in nodes:
+		add_node.call(node_id)
 	
 	return session
 
@@ -126,21 +142,17 @@ func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeF
 			return ERR_INVALID_PARAMETER
 
 
-## Sets the position of a node in the priority order
-func set_priority_order(p_node: NetworkNode, p_position: int) -> bool:
-	if p_node not in _nodes:
+## Sets a nodes priority index, pass -1 to remove the node from the priority order
+func set_node_priority(p_node: NetworkNode, p_position: int) -> bool:
+	if not _nodes.has(p_node):
 		return false
 	
-	var pos: int = _set_priority_order(p_node, p_position)
-	
-	if pos == -1:
-		return false
-	
+	var new_position: int = _set_node_priority(p_node, p_position)
 	var message: ConstaNetSessionSetPriority = ConstaNetSessionSetPriority.new()
 	
 	message.session_id = _session_id
 	message.node_id = p_node.get_node_id()
-	message.position = pos
+	message.position = new_position
 	message.origin_id = _network.get_node_id()
 	message.set_announcement(true)
 	
@@ -206,17 +218,16 @@ func get_session_master() -> ConstellationNode:
 
 
 ## Returns the priority order
-func get_priority_order() -> Array[NetworkNode]:
-	var return_value: Array[NetworkNode]
-	return_value.assign(_priority_order)
+func get_priority_order() -> Dictionary[int, NetworkNode]:
+	var return_value: Dictionary[int, NetworkNode]
+	return_value.assign(_node_priorities.get_as_dict())
 	
 	return return_value
 
 
 ## Returns the priority order
 func get_priority_of(p_node: NetworkNode) -> int:
-	return _priority_order.find(p_node)
-
+	return _node_priorities.right(p_node, -1)
 
 
 ## Gets the session flags
@@ -227,6 +238,11 @@ func get_session_flags() -> int:
 ## Returns true if this session has a master
 func has_session_master() -> bool:
 	return _session_master != null
+
+
+## Returns true if the given node is a member of this session
+func has_node_in_session(p_node: ConstellationNode) -> bool:
+	return _nodes.has(p_node)
 
 
 ## Closes this sessions local object
@@ -255,13 +271,11 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if is_instance_valid(_session_master):
 		_session_master._remove_session_master_mark()
 	
-	if p_session_master not in _nodes:
+	if not _nodes.has(p_session_master):
 		return false
 	
 	_session_master = p_session_master
-	
-	if is_instance_valid(_session_master):
-		_session_master._mark_as_session_master()
+	_session_master._mark_as_session_master()
 	
 	master_changed.emit(_session_master)
 	return true
@@ -293,40 +307,83 @@ func _set_node_array(p_node_array: Array[ConstellationNode]) -> void:
 		_add_node(new_node)
 
 
-## Internal function to Set the position of a node in the priority order
-func _set_priority_order(p_node: ConstellationNode, p_position: int) -> int:
-	if p_position > len(_priority_order) - 1:
+## Sets the priority index of a node, pass -1 to remove the node from the priority order, returns the new priority
+func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
+	var requested_position: int = clampi(p_position, -1, MAX_NODES)
+	
+	if not _nodes.has(p_node):
+		push_error("Given node does not exist in this session")
 		return -1
 	
-	var orignal_pos: int = _priority_order.find(p_node)
+	if _node_priorities.right(p_node) == requested_position:
+		return requested_position
 	
-	_priority_order.remove_at(orignal_pos)
-	_priority_order.insert(p_position, p_node)
+	if requested_position == -1:
+		_node_priorities.erase_right(p_node)
 	
-	for node_position: int in range(_priority_order.size()):
-		_priority_order[node_position].priority_changed.emit(node_position)
+	elif _node_priorities.has_left(requested_position):
+		_shift_order(requested_position + 1)
+		_node_priorities.map(requested_position, p_node)
 	
-	var position: int = _priority_order.find(p_node)
-	priority_changed.emit(p_node, position)
+	else:
+		_node_priorities.map(requested_position, p_node)
 	
-	return position
+	_priority_order.clear()
+	_priority_order.assign(_node_priorities.get_left())
+	_priority_order.sort()
+	
+	p_node.priority_changed.emit(requested_position)
+	priority_changed.emit(p_node, requested_position)
+	
+	return requested_position
+
+
+## Checks and shifts the given element
+func _shift_order(p_current_index: int) -> void:
+	if _node_priorities.left(p_current_index):
+		_shift_order(p_current_index + 1)
+	
+	var previous_index: int = p_current_index - 1
+	var node: ConstellationNode = _node_priorities.left(previous_index)
+	
+	_node_priorities.erase_left(previous_index)
+	_node_priorities.map(p_current_index, node)
+	
+	node.priority_changed.emit(p_current_index)
+
+
+## Returns the next free priority index
+func _get_next_priority_index() -> int:
+	if not _priority_order:
+		return 0
+	
+	for index: int in range(_priority_order.size()):
+		if _priority_order[index] != index:
+			return index
+	
+	return _priority_order[-1] + 1
 
 
 ## Adds a node into this session
-func _add_node(p_node: ConstellationNode) -> bool:
-	if p_node in _nodes:
+func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
+	if _nodes.has(p_node):
+		push_error("_add_node: Given node already exists in this session")
+		return false
+	
+	if _nodes.size() > MAX_NODES:
+		push_error("_add_node: Max number of nodes has been reached in this session")
 		return false
 	
 	_nodes.append(p_node)
-	_priority_order.append(p_node)
 	_node_connections.connect_object(p_node, true)
+	_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
 	
 	node_joined.emit(p_node)
-	p_node._set_session_no_join(self)
 	
-	if not _session_master and _priority_order[0] == p_node:
-		_set_session_master(p_node)
+	if p_node.get_session() != self:
+		p_node._set_session(self)
 	
+	_elect_new_master()
 	return true
 
 
@@ -335,12 +392,12 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 	if not _nodes.has(p_node):
 		return false
 	
+	_set_node_priority(p_node, -1)
 	_nodes.erase(p_node)
-	_priority_order.erase(p_node)
 	_node_connections.disconnect_object(p_node, true)
 	
 	if p_node == _session_master:
-		_set_session_master(_priority_order[0] if _priority_order else null)
+		_elect_new_master()
 	
 	node_left.emit(p_node)
 	
@@ -348,6 +405,22 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 		delete()
 	
 	return true
+
+
+## Elects a new session master from the proirity order
+func _elect_new_master() -> ConstellationNode:
+	if _nodes.has(_session_master) and _session_master.get_connection_state() == NetworkNode.ConnectionState.CONNECTED:
+		return _session_master
+	
+	if not _priority_order:
+		return null
+	
+	var candidate: ConstellationNode = _node_priorities.left(_priority_order[0])
+	
+	if _set_session_master(candidate):
+		return candidate
+	else:
+		return null
 
 
 ## Updates the details of this node with a ConstaNetSessionAnnounce message
@@ -358,6 +431,7 @@ func _update_with(p_message: ConstaNetSessionAnnounce) -> bool:
 	_set_session_master(_network.get_node_from_id(p_message.session_master, true))
 	_set_name(p_message.session_name)
 	_set_node_array(_network.get_node_array(p_message, true))
+	#TODO, this feels jankey, maybe add check to only allow this method to run when the session is unknown???
 	
 	return true
 
@@ -371,10 +445,8 @@ func _on_node_connection_state_changed(p_connection_state: ConstellationNode.Con
 	
 	match p_connection_state:
 		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:
-			_priority_order.erase(p_node)
-			
 			if p_node == _session_master:
-				_set_session_master(_priority_order[0] if _priority_order else null)
+				_elect_new_master()
 		
 		ConstellationNode.ConnectionState.CONNECTED:
 			if p_node.is_sesion_master():

@@ -261,7 +261,7 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	for session: ConstellationSession in _known_sessions.values():
 		session.delete()
 	
-	_local_node._set_session_no_join(null)
+	_local_node._set_session(null)
 	
 	_known_nodes.clear()
 	_known_sessions.clear()
@@ -312,7 +312,7 @@ func create_session(p_name: String) -> NetworkSession:
 
 
 ## Joins a pre-existing session on the network
-func join_session(p_session: NetworkSession) -> bool:
+func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if p_session == _local_node.get_session():
 		return false
 	
@@ -331,7 +331,7 @@ func join_session(p_session: NetworkSession) -> bool:
 	message.value = p_session.get_session_id()
 	message.set_announcement(true)
 	
-	_local_node._set_session(p_session)
+	_local_node._set_session(p_session, p_auto_priority, p_priority)
 	_send_message_mcast(message)
 	_session_connections.connect_object(p_session)
 	
@@ -471,19 +471,6 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 		return unknown_node
 	
 	return null
-
-
-## Gets all the nodes as an Array of ConstellationNode
-func get_node_array(p_from: ConstaNetSessionAnnounce, p_create_unknown: bool = false) -> Array[ConstellationNode]:
-	var typed_array: Array[ConstellationNode]
-	
-	for node_id: String in p_from.nodes:
-		var node: ConstellationNode = get_node_from_id(node_id, p_create_unknown)
-		
-		if node not in typed_array:
-			typed_array.append(node)
-	
-	return typed_array
 
 
 ## Sets the network state
@@ -681,11 +668,10 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST) -> E
 ## Sends a sessions anouncement message
 func _send_session_anouncement(p_session: ConstellationSession, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
 	var message: ConstaNetSessionAnnounce = ConstaNetSessionAnnounce.new()
-	var nodes: Array[NetworkNode] = p_session.get_nodes()
+	var node_ids: Dictionary[String, int] = {}
 	
-	var node_ids: Array[String] = Array(nodes.map(func (p_node: ConstellationNode): 
-		return p_node.get_node_id()
-	), TYPE_STRING, "", null)
+	for node: ConstellationNode in p_session.get_nodes():
+		node_ids[node.get_node_id()] = p_session.get_priority_of(node)
 	
 	message.origin_id = get_node_id()
 	message.session_master = get_node_id()
@@ -836,7 +822,7 @@ func _handle_session_set_priority(p_session_set_priority: ConstaNetSessionSetPri
 	var session: ConstellationSession = get_session_from_id(p_session_set_priority.session_id)
 	
 	if is_instance_valid(node) and is_instance_valid(session):
-		session._set_priority_order(node, p_session_set_priority.position)
+		session._set_node_priority(node, p_session_set_priority.position)
 
 
 ## Handles a ConstaNetSessionSetMaster

@@ -453,8 +453,6 @@ func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true
 	_session = p_session
 	
 	if not _session.has_node_in_session(self):
-		print(_session.has_node_in_session(self))
-		print(_session._nodes)
 		_session._add_node(self, p_auto_priority, p_priority)
 	
 	session_changed.emit(_session)

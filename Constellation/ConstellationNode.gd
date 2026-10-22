@@ -613,8 +613,8 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 		MessageType.GOODBYE when not is_local():
 			_handle_goodbye(p_message)
 		
-		MessageType.SESSION_ANNOUNCE when not is_local():
-			_handle_session_announce(p_message)
+		MessageType.SESSION_DISCOVERY when not is_local():
+			_handle_session_discovery(p_message)
 		
 		MessageType.SET_ATTRIBUTE:
 			_handle_set_attribute(p_message)
@@ -650,8 +650,8 @@ func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	_set_connection_status(ConnectionState.OFFLINE)
 
 
-## Handles a ConstaNetSessionAnnounce
-func _handle_session_announce(p_session_announce: ConstaNetSessionAnnounce) -> void:
+## Handles a ConstaNetSessionDiscovery
+func _handle_session_discovery(p_session_discovery: ConstaNetSessionDiscovery) -> void:
 	pass
 	## TODO: Don't auto join session. If a session announce message is recieved with self as a member. Send a session leave message
 	#if p_session_announce.is_announcement() and p_session_announce.nodes.has(_node_id):

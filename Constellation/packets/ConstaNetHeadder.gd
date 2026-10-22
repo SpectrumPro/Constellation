@@ -18,8 +18,7 @@ enum Type {
 	STATE_REQUEST,			# Request full state sync
 	HEARTBEAT,				# Periodic alive signal
 	
-	SESSION_ANNOUNCE,		# Announces a new session
-	SESSION_DISCOVERY,		# Requests network nodes to anounce sessions
+	SESSION_DISCOVERY,		# Announcement / discovery request for a session
 	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session, name, master, ect..
 	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
 	
@@ -77,7 +76,6 @@ static var ClassTypes: Dictionary[int, Script] = {
 	Type.SET_ATTRIBUTE: 		ConstaNetSetAttribute,
 	Type.HEARTBEAT:				ConstaNetHeartBeat,
 	
-	Type.SESSION_ANNOUNCE: 		ConstaNetSessionAnnounce,
 	Type.SESSION_DISCOVERY: 	ConstaNetSessionDiscovery,
 	Type.SESSION_SET_ATTRIBUTE: ConstaNetSessionSetAttribute,
 	Type.SESSION_SET_PRIORITY: 	ConstaNetSessionSetPriority,
@@ -127,7 +125,7 @@ const A_MSG_TARGET: String = "target_id"
 
 
 ## Current proto version as uint16
-const VERSION: int = 4
+const VERSION: int = 5
 
 ## Byte length for a NodeID
 const NODE_ID_LENGTH: int = DataType.NODEID

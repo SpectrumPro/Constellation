@@ -32,8 +32,8 @@ var _node_connections: SignalGroup = SignalGroup.new([
 ]).set_prefix("_on_node_")
 
 
-## Creates a new session from a ConstaNetSessionAnnounce message
-static func create_from_session_announce(p_message: ConstaNetSessionAnnounce) -> ConstellationSession:
+## Creates a new session from a ConstaNetSessionDiscovery message
+static func create_from_session_discovery(p_message: ConstaNetSessionDiscovery) -> ConstellationSession:
 	var session: ConstellationSession = ConstellationSession.new()
 	var nodes: Dictionary[String, int] = p_message.nodes
 	
@@ -418,7 +418,7 @@ func _elect_new_master() -> ConstellationNode:
 
 
 ## Updates the details of this node with a ConstaNetSessionAnnounce message
-func _update_with(p_message: ConstaNetSessionAnnounce) -> bool:
+func _update_with(p_message: ConstaNetSessionDiscovery) -> bool:
 	if _session_id != p_message.session_id:
 		return false
 	

@@ -292,21 +292,6 @@ func _set_session_name(p_name: String) -> bool:
 	return true
 
 
-## Sets the node array, and emits signals
-func _set_node_array(p_node_array: Array[ConstellationNode]) -> void:
-	var new_nodes: Array[ConstellationNode] = p_node_array.duplicate()
-	
-	for current_node: ConstellationNode in _nodes.duplicate():
-		if current_node in new_nodes:
-			new_nodes.erase(current_node)
-		
-		else:
-			_remove_node(current_node, true)
-	
-	for new_node: ConstellationNode in new_nodes:
-		_add_node(new_node)
-
-
 ## Sets the priority index of a node, pass -1 to remove the node from the priority order, returns the new priority
 func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 	var requested_position: int = clampi(p_position, -1, MAX_NODES)
@@ -322,10 +307,12 @@ func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 		_node_priorities.erase_right(p_node)
 	
 	elif _node_priorities.has_left(requested_position):
+		_node_priorities.erase_right(p_node)
 		_shift_order(requested_position + 1)
 		_node_priorities.map(requested_position, p_node)
 	
 	else:
+		_node_priorities.erase_right(p_node)
 		_node_priorities.map(requested_position, p_node)
 	
 	_priority_order.clear()
@@ -430,7 +417,22 @@ func _update_with(p_message: ConstaNetSessionAnnounce) -> bool:
 	
 	_set_session_master(_network.get_node_from_id(p_message.session_master, true))
 	_set_name(p_message.session_name)
-	_set_node_array(_network.get_node_array(p_message, true))
+	
+	var new_nodes: Dictionary[String, int] = p_message.nodes.duplicate()
+	
+	for current_node: ConstellationNode in _nodes.duplicate():
+		var node_id: String = current_node.get_node_id()
+		
+		if new_nodes.has(node_id):
+			_set_node_priority(current_node, new_nodes[node_id])
+			new_nodes.erase(node_id)
+		
+		else:
+			_remove_node(current_node, true)
+	
+	for node_id: String in new_nodes:
+		_add_node(_network.get_node_from_id(node_id, true), false, new_nodes[node_id])
+	
 	#TODO, this feels jankey, maybe add check to only allow this method to run when the session is unknown???
 	
 	return true

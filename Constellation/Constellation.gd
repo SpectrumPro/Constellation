@@ -107,11 +107,6 @@ var _unknown_nodes: Dictionary[String, ConstellationNode]
 ## Stores all multi part messages being recieved
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
-## SignalGroup for the current session
-var _session_connections: SignalGroup = SignalGroup.new([
-	_on_current_session_node_joined,
-]).set_prefix("_on_current_session_")
-
 
 ## init
 func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
@@ -313,57 +308,12 @@ func create_session(p_name: String) -> NetworkSession:
 
 ## Joins a pre-existing session on the network
 func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
-	if p_session == _local_node.get_session():
-		return false
-	
-	if not is_instance_valid(p_session):
-		leave_session()
-		return false
-	
-	if _local_node.get_session():
-		leave_session()
-	
-	_logv("Joining ConstellationSession: ", p_session.get_uname())
-	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
-	
-	message.origin_id = get_node_id()
-	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
-	message.value = p_session.get_session_id()
-	message.set_announcement(true)
-	
-	_local_node._set_session(p_session, p_auto_priority, p_priority)
-	_send_message_mcast(message)
-	_session_connections.connect_object(p_session)
-	
-	for node: ConstellationNode in p_session.get_nodes():
-		node.connect_node()
-	
-	return true
+	return _local_node.join_session(p_session, p_auto_priority, p_priority)
 
 
 ## Leaves a session 
 func leave_session() -> bool:
-	if not _local_node.get_session():
-		return false
-	
-	_logv("Leaving ConstellationSession: ", _local_node.get_session().get_uname())
-	
-	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
-	var session: ConstellationSession = _local_node.get_session()
-	_local_node._leave_session()
-	
-	message.origin_id = get_node_id()
-	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
-	message.value = ""
-	message.set_announcement(true)
-	
-	_session_connections.disconnect_object(session)
-	_send_message_mcast(message)
-	
-	for node: ConstellationNode in session.get_nodes():
-		node.disconnect_node()
-	
-	return true
+	return _local_node.leave_session()
 
 
 ## Sets the IP and interface name from an IPAddr object
@@ -961,13 +911,6 @@ func _on_session_timer_timeout() -> void:
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	p_session.delete_requested.disconnect(_on_session_delete_request)
 	_known_sessions.erase(p_session.get_session_id())
-
-
-## Emitted when a node joins the current session
-func _on_current_session_node_joined(p_node: ConstellationNode) -> void:
-	if not p_node.is_in_connection_state():
-		p_node.connect_node()
-		_logv("A new ConstellationNode: \"", p_node.get_node_name(), "\" has joined the current session. Initalizing auto-connect")
 
 
 ## Called when the refresh timer times out

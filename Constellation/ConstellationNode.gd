@@ -64,6 +64,9 @@ var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 ## Previous TCP Peer status
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 
+## Stores all connection locks in a Set
+var _connection_locks: Set = Set.new()
+
 ## UNIX timestamp of when the last heartbeat was sent
 var _last_heart_beat_at: float
 
@@ -171,11 +174,30 @@ func connect_node() -> Error:
 	return err_code
 
 
-## Disconnects TCP from this node
+## Disconnects TCP from this node. Any active connection locks are auto removed
 func disconnect_node() -> void:
 	_network._logv("Disconnecting TCP from ConstellationNode: \"", _name, "\"")
+	
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
+	
+	_connection_locks.clear()
+
+
+## Adds a connection lock and calls connect_node if not already connected
+func connect_node_and_add_lock(p_key: Variant) -> void:
+	_connection_locks.add(p_key)
+	
+	if not is_tcp_connected():
+		connect_node()
+
+
+## Removes a connection lock, if not locks remain disconnect_node is called
+func remove_connection_lock(p_key: Variant) -> void:
+	_connection_locks.remove(p_key)
+	
+	if not _connection_locks.size():
+		disconnect_node()
 
 
 ## Sends a message to the remote node
@@ -245,19 +267,37 @@ func send_message_tcp(p_message: ConstaNetHeadder) -> Error:
 
 
 ## Joines the given session. If not self.is_local() a SetAttribute Attribute.SESSION message will be sent
-func join_session(p_session: NetworkSession) -> bool:
+func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if not p_session or p_session == _session:
 		return false
 	
-	if is_local():
-		return _network.join_session(p_session)
+	if not is_local():
+		return _send_set_attribute(ConstaNetHeadder.Flags.REQUEST, ConstaNetSetAttribute.Attribute.SESSION, p_session.get_session_id())
 	
-	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
+	if p_session == _session:
+		return false
 	
-	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
-	set_attribute.value = p_session.get_session_id()
+	if not is_instance_valid(p_session):
+		leave_session()
+		return false
 	
-	send_message_udp(set_attribute)
+	if _session:
+		leave_session()
+	
+	_network._logv("Joining ConstellationSession: ", p_session.get_uname())
+	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
+	
+	message.origin_id = get_node_id()
+	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	message.value = p_session.get_session_id()
+	message.set_announcement(true)
+	
+	_set_session(p_session, p_auto_priority, p_priority)
+	_network._send_message_mcast(message)
+	
+	for node: ConstellationNode in p_session.get_nodes():
+		node.connect_node_and_add_lock(p_session)
+	
 	return true
 
 
@@ -266,15 +306,26 @@ func leave_session() -> bool:
 	if not get_session():
 		return false
 	
-	if is_local():
-		return _network.leave_session()
+	if not is_local():
+		return _send_set_attribute(ConstaNetHeadder.Flags.REQUEST, ConstaNetSetAttribute.Attribute.SESSION, "")
 	
-	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new(), Flags.REQUEST)
+	if not _session:
+		return false
 	
-	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
-	set_attribute.value = ""
+	_network._logv("Leaving ConstellationSession: ", _session.get_uname())
+	var message: ConstaNetSetAttribute = ConstaNetSetAttribute.new()
 	
-	send_message_udp(set_attribute)
+	message.origin_id = get_node_id()
+	message.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	message.value = ""
+	message.set_announcement(true)
+	
+	for node: ConstellationNode in _session.get_nodes():
+		node.remove_connection_lock(_session)
+	
+	_set_session(null)
+	_network._send_message_mcast(message)
+	
 	return true
 
 
@@ -316,6 +367,11 @@ func get_session_id() -> String:
 	return ""
 
 
+## Returns all the current connection locks
+func get_connection_locks() -> Array:
+	return _connection_locks.get_as_array()
+
+
 ## Sends a message to set the name of this node on the network
 func set_node_name(p_name: String) -> void:
 	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new())
@@ -337,6 +393,11 @@ func set_role_flags(p_role_flags: int) -> bool:
 		return false
 	
 	return _set_role_flags(p_role_flags)
+
+
+## Returns true if the given connection lock exists
+func has_connection_lock(p_key: Variant) -> bool:
+	return _connection_locks.has(p_key)
 
 
 ## Returns True if this node is local
@@ -530,6 +591,17 @@ func _send_heartbeat_acknowledment(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHe
 	
 	var errcode: Error = send_message(message, p_transport_mode)
 	_network._logv("Sending HeartBeat ACK: ", ConstaNetHeartBeat.Mode.keys()[p_mode], ", via: ", TransportMode.keys()[p_transport_mode], ", to: ", get_uname(), ", errcode: ", error_string(errcode))
+
+
+## Sends a SetAttribute message to the remote node
+func _send_set_attribute(p_flags: ConstaNetCommand.Flags, p_attribute: ConstaNetSetAttribute.Attribute, p_value: Variant) -> bool:
+	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new(), p_flags)
+	
+	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
+	set_attribute.value = p_value
+	
+	var errcode: Error = send_message_udp(set_attribute)
+	return bool(errcode)
 
 
 ## Handles a ConstaNetHeadder

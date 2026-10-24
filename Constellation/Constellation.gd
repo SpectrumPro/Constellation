@@ -397,11 +397,12 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 		if _unknown_sessions.has(p_session_id):
 			return _unknown_sessions[p_session_id]
 		
+		_log("Unable to find ConstellationSession: \"", p_session_id, "\" localy. Creating unknown session")
+		
 		var unknown_session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
-		
 		_unknown_sessions[p_session_id] = unknown_session
-		_log("Unable to find ConstellationSession: \"", unknown_session.get_session_id(), "\" localy. Creating unknown session")
 		
+		session_created.emit(unknown_session)
 		return unknown_session
 	
 	return _known_sessions.get(p_session_id)
@@ -416,11 +417,12 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 		if _unknown_nodes.has(p_node_id):
 			return _unknown_nodes[p_node_id]
 		
+		_logv("Unable to find ConstellationNode: \"", p_node_id, "\" localy. Creating unknown node")
+		
 		var unknown_node: ConstellationNode = ConstellationNode.create_unknown_node(p_node_id)
-		
 		_unknown_nodes[p_node_id] = unknown_node
-		_logv("Unable to find ConstellationNode: \"", unknown_node.get_node_id(), "\" localy. Creating unknown node")
 		
+		node_found.emit(unknown_node)
 		return unknown_node
 	
 	return null

@@ -790,7 +790,8 @@ func _handle_tcp_status_error() -> void:
 	match _connection_state:
 		ConnectionState.CONNECTING:
 			_set_connection_status(ConnectionState.CONNECTION_ERROR)
-
+		ConnectionState.CONNECTED:
+			_set_connection_status(ConnectionState.LOST_CONNECTION)
 
 ## Runs a refresh step
 func _refresh() -> void:

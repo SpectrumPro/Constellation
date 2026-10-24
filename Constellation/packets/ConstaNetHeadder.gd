@@ -32,6 +32,8 @@ enum Flags {
 	ACKNOWLEDGMENT		= 1 << 1,	# This message is responding to a request
 	ERROR				= 1 << 2,	# This message contains an error
 	ANNOUNCEMENT		= 1 << 3,	# This message contains new or updated infomation
+	DENIED				= 1 << 4,	# This action has been denied by the sender, used with ACKNOWLEDGMENT
+	ALLOWED				= 1 << 5,	# This action has been allowed by the sender, used with ACKNOWLEDGMENT
 }
 
 ## Enum for network roles
@@ -40,7 +42,6 @@ enum RoleFlags {
 	EXECUTOR			= 1 << 0,	# Performs the actions defined by the Controller
 	CONTROLLER			= 1 << 1,	# # Sends control and command messages to the Executer 
 }
-
 
 ## Enum for data type lengths
 enum TypeLength {
@@ -125,7 +126,7 @@ const A_MSG_TARGET: String = "target_id"
 
 
 ## Current proto version as uint16
-const VERSION: int = 5
+const VERSION: int = 6
 
 ## Byte length for a NodeID
 const NODE_ID_LENGTH: int = TypeLength.NODEID
@@ -245,6 +246,22 @@ func set_announcement(p_state: bool) -> void:
 		flags &= ~Flags.ANNOUNCEMENT
 
 
+## Sets this ConstaNet message's Denied flag
+func set_denied(p_state: bool) -> void:
+	if p_state:
+		flags |= Flags.DENIED
+	else:
+		flags &= ~Flags.DENIED
+
+
+## Sets this ConstaNet message's Allowed flag
+func set_allowed(p_state: bool) -> void:
+	if p_state:
+		flags |= Flags.ALLOWED
+	else:
+		flags &= ~Flags.ALLOWED
+
+
 ## Returns true if the Request flag is set
 func is_request() -> bool:
 	return (flags & Flags.REQUEST) != 0
@@ -263,6 +280,16 @@ func is_error() -> bool:
 ## Returns true if the Announcement flag is set
 func is_announcement() -> bool:
 	return (flags & Flags.ANNOUNCEMENT) != 0
+
+
+## Returns true if the Denied flag is set
+func is_denied() -> bool:
+	return (flags & Flags.DENIED) != 0
+
+
+## Returns true if the Announcement flag is set
+func is_allowed() -> bool:
+	return (flags & Flags.ALLOWED) != 0
 
 
 ## parses a Dictionary

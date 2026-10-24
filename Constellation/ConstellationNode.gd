@@ -18,6 +18,9 @@ signal node_ip_changed(ip: String)
 ## The MTU for udp payloads, if this is exceeded the command will be sent as a multipart message
 const UDP_MTP: int = 1000
 
+## Time in seconds to wait for a disconnect ACK message before forcing a disconnect
+const DISCONNECT_ACK_TIMEOUT: float = 2.0
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -72,6 +75,9 @@ var _last_heart_beat_at: float
 
 ## True when a heartbeat ACK message has been received since last refresh
 var _has_received_heartbeat_ack: bool = false
+
+## Timer to wait for a disconnect ACK message before forcing a disconnect
+var _disconnect_ack_timeout_timer: Timer = Timer.new()
 
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
@@ -138,6 +144,16 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	.display("ConstellationNode", 2)
 
 
+## ready
+func _ready() -> void:
+	_disconnect_ack_timeout_timer.set_autostart(false)
+	_disconnect_ack_timeout_timer.set_one_shot(true)
+	_disconnect_ack_timeout_timer.set_wait_time(DISCONNECT_ACK_TIMEOUT)
+	_disconnect_ack_timeout_timer.timeout.connect(_on_disconnect_act_timeout)
+	
+	add_child(_disconnect_ack_timeout_timer)
+
+
 ## Called each frame
 func _process(delta: float) -> void:
 	_tcp_socket.poll()
@@ -158,8 +174,8 @@ func connect_node() -> Error:
 	if is_local():
 		return ERR_UNAVAILABLE
 	
-	if _connection_state == ConnectionState.CONNECTED:
-		disconnect_node(false)
+	if is_in_connection_state():
+		return ERR_ALREADY_EXISTS
 	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)
@@ -176,13 +192,17 @@ func connect_node() -> Error:
 
 ## Disconnects TCP from this node. if p_clear_locks == true, all connection locks are removed
 func disconnect_node(p_clear_locks: bool = true) -> void:
-	_network._logv("Disconnecting TCP from ConstellationNode: \"", _name, "\"")
+	_network._logv("Attempting disconnect from: \"", _name, "\"")
+	_disconnect_ack_timeout_timer.start()
 	
-	_tcp_socket.disconnect_from_host()
-	_tcp_previous_status = -1
+	_send_heartbeat_request(ConstaNetHeartBeat.Mode.DISCONNECTION, TransportMode.AUTO)
+	_set_connection_status(ConnectionState.AWAITING_DISCONNECT_ACK)
 	
 	if p_clear_locks:
 		_connection_locks.clear()
+	
+	_ping = NAN
+	ping_changed.emit(_ping)
 
 
 ## Adds a connection lock and calls connect_node if not already connected
@@ -332,16 +352,16 @@ func leave_session() -> bool:
 	message.value = ""
 	message.set_announcement(true)
 	
-	var session_nodes: Array[NetworkNode] = _session.get_nodes()
+	var session: ConstellationSession = _session
 	
 	_set_session(null)
 	_network._send_message_mcast(message)
 	
-	for node: ConstellationNode in session_nodes:
+	for node: ConstellationNode in session.get_nodes():
 		if node == self:
 			continue
 		
-		node.remove_connection_lock(_session)
+		node.remove_connection_lock(session)
 	
 	return true
 
@@ -575,6 +595,23 @@ func _mark_as_unknown(p_unknown: bool) -> void:
 		no_longer_unknown.emit()
 
 
+## Handles the final stage of the connect process after the HeartBeat handshake
+func _final_connect() -> void:
+	_send_heartbeat_acknowledment(ConstaNetHeartBeat.Mode.CONNECTION, TransportMode.TCP, ConstaNetHeadder.Flags.ALLOWED)
+	
+	_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+	_send_heartbeat_request()
+
+
+## Handles the final step of the disconnect process after the HeartBeat handshake
+func _final_disconnect() -> void:
+	_tcp_socket.disconnect_from_host()
+	_tcp_previous_status = -1
+	
+	_set_connection_status(ConnectionState.DISCOVERED)
+	_network._logv("Successfully disconnected from: ", _name)
+
+
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
 func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
@@ -592,8 +629,12 @@ func _send_discovery_acknowledment(p_transport_mode: TransportMode = TransportMo
 
 
 ## Sends a Heartbeat message with Flags.REQUEST to the remote node
-func _send_heartbeat_request(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, p_transport_mode: TransportMode = TransportMode.AUTO):
-	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.REQUEST)
+func _send_heartbeat_request(
+	p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, 
+	p_transport_mode: TransportMode = TransportMode.AUTO, 
+	p_flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags.NONE
+):
+	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.REQUEST | p_flags)
 	message.mode = p_mode
 	
 	var errcode: Error = send_message(message, p_transport_mode)
@@ -603,8 +644,12 @@ func _send_heartbeat_request(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBea
 
 
 ## Sends a Heartbeat message with Flags.ACKNOWLEDGMENT to the remote node
-func _send_heartbeat_acknowledment(p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, p_transport_mode: TransportMode = TransportMode.AUTO):
-	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.ACKNOWLEDGMENT)
+func _send_heartbeat_acknowledment(
+	p_mode: ConstaNetHeartBeat.Mode = ConstaNetHeartBeat.Mode.HEARTBEAT, 
+	p_transport_mode: TransportMode = TransportMode.AUTO, 
+	p_flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags.NONE
+):
+	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), Flags.ACKNOWLEDGMENT | p_flags)
 	message.mode = p_mode
 	
 	var errcode: Error = send_message(message, p_transport_mode)
@@ -619,7 +664,7 @@ func _send_set_attribute(p_flags: ConstaNetCommand.Flags, p_attribute: ConstaNet
 	set_attribute.value = p_value
 	
 	var errcode: Error = send_message_udp(set_attribute)
-	return bool(errcode)
+	return not bool(errcode)
 
 
 ## Handles a ConstaNetHeadder
@@ -692,32 +737,65 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 			)
 			
 			if is_local() and p_set_attribute.is_request():
-				_network.join_session(session)
+				set_session(session)
 			elif p_set_attribute.is_announcement():
 				_set_session(session)
 
 
 ## Handles a ConstaNetHeartBeat
 func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP = null) -> void:
+	match p_heart_beat.mode:
+		ConstaNetHeartBeat.Mode.HEARTBEAT:
+			_handle_heartbeat_ping(p_heart_beat)
+		
+		ConstaNetHeartBeat.Mode.CONNECTION:
+			_handle_heartbeat_connection(p_heart_beat, p_source)
+		
+		ConstaNetHeartBeat.Mode.DISCONNECTION:
+			_handle_heartbeat_disconnection(p_heart_beat)
+
+
+## Handles a ConstaNetHeartBeat Mode.HEARTBEAT message
+func _handle_heartbeat_ping(p_heart_beat: ConstaNetHeartBeat) -> void:
+	if p_heart_beat.is_request():
+		_send_heartbeat_acknowledment()
+	
+	elif p_heart_beat.is_acknowledgment():
+		_ping = Time.get_unix_time_from_system() - _last_heart_beat_at
+		_has_received_heartbeat_ack = true
+		ping_changed.emit(snappedf(_ping, 0.001))
+
+
+## Handles a ConstaNetHeartBeat Mode.CONNECTION message
+func _handle_heartbeat_connection(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP) -> void:
 	match _connection_state:
-		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.mode == ConstaNetHeartBeat.Mode.CONNECTION and p_heart_beat.is_acknowledgment():
+		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.is_acknowledgment() and p_heart_beat.is_allowed():
 			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
 			_send_heartbeat_request()
 		
-		_ when _connection_state > ConnectionState.OFFLINE and p_heart_beat.mode == ConstaNetHeartBeat.Mode.CONNECTION and p_heart_beat.is_request() and is_instance_valid(p_source):
+		_ when _connection_state not in [ConnectionState.OFFLINE, ConnectionState.UNKNOWN] and p_heart_beat.is_request() and is_instance_valid(p_source):
 			_use_stream(p_source)
-			_send_heartbeat_acknowledment(ConstaNetHeartBeat.Mode.CONNECTION, TransportMode.TCP)
+			_final_connect()
+
+
+## Handles a ConstaNetHeartBeat Mode.DISCONNECTION message
+func _handle_heartbeat_disconnection(p_heart_beat: ConstaNetHeartBeat) -> void:
+	match _connection_state:
+		ConnectionState.CONNECTED, ConnectionState.AWAITING_DISCONNECT_ACK when p_heart_beat.is_request():
+			var flag: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags.DENIED if _connection_locks.size() else ConstaNetHeadder.Flags.ALLOWED
 			
-			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-			_send_heartbeat_request()
+			_network._logv("Recieved disconnection request from: ", _name, " returning: ", Utils.flags_to_string(flag, ConstaNetHeadder.Flags))
+			_send_heartbeat_acknowledment(ConstaNetHeartBeat.Mode.DISCONNECTION, TransportMode.AUTO, flag)
 		
-		ConnectionState.CONNECTED when p_heart_beat.mode == ConstaNetHeartBeat.Mode.HEARTBEAT and p_heart_beat.is_request():
-			_send_heartbeat_acknowledment()
-		
-		ConnectionState.CONNECTED when p_heart_beat.mode == ConstaNetHeartBeat.Mode.HEARTBEAT and p_heart_beat.is_acknowledgment():
-			_ping = Time.get_unix_time_from_system() - _last_heart_beat_at
-			_has_received_heartbeat_ack = true
-			ping_changed.emit(snappedf(_ping, 0.001))
+		ConnectionState.AWAITING_DISCONNECT_ACK when p_heart_beat.is_acknowledgment():
+			if p_heart_beat.is_allowed():
+				_disconnect_ack_timeout_timer.stop()
+				_final_disconnect()
+			
+			else:
+				_disconnect_ack_timeout_timer.stop()
+				_network._logv("Remote node: ", _name, " has refused a disconnection attempt")
+				_set_connection_status(ConnectionState.CONNECTED)
 
 
 ## Handles a ConstaNetCommand
@@ -795,6 +873,8 @@ func _handle_tcp_status_error() -> void:
 			_set_connection_status(ConnectionState.CONNECTION_ERROR)
 		ConnectionState.CONNECTED:
 			_set_connection_status(ConnectionState.LOST_CONNECTION)
+			#TODO Handle connectio loss with auto reconnect
+
 
 ## Runs a refresh step
 func _refresh() -> void:
@@ -803,6 +883,14 @@ func _refresh() -> void:
 	if not _has_received_heartbeat_ack:
 		_network._log("ConstellationNode: \"", get_node_name(), "\" has taken too long to respond")
 		_set_connection_status(ConnectionState.LOST_CONNECTION)
+		#TODO Handle connectio loss with auto reconnect
 	
 	_has_received_heartbeat_ack = false
 	_send_heartbeat_request()
+
+
+## Called when the disconnect ACK timeer times out
+func _on_disconnect_act_timeout() -> void:
+	if _connection_state == ConnectionState.AWAITING_DISCONNECT_ACK:
+		_network._logv("Node: \"", _name, "\" has taken too to responde to Disconnect ACK. Forcing a disconnect")
+		_final_disconnect()

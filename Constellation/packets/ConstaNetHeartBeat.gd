@@ -10,6 +10,7 @@ enum Mode {
 	UNKNOWN,		## Default State
 	HEARTBEAT,		## Used as a ping 
 	CONNECTION,		## Used to init a connection between nodes
+	DISCONNECTION,	## Used to aggree if two notes can disconnect
 }
 
 

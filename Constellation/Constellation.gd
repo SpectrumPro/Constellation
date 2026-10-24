@@ -289,6 +289,12 @@ func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter =
 	return _local_node.get_session().send_command(p_command, p_node_filter, p_nodes)
 
 
+## Sends a manual request for nodes and session to re-announce them self on the network
+func send_discovery() -> void:
+	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
+	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
+
+
 ## Creates and joins a new session
 func create_session(p_name: String) -> NetworkSession:
 	if not p_name or _network_state != NetworkState.READY:

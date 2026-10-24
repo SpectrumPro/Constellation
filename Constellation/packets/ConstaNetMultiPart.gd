@@ -6,35 +6,35 @@ class_name ConstaNetMultiPart extends ConstaNetHeadder
 
 
 ## Byte length for multi_part_id
-const T_PART_ID: DataType = DataType.NODEID
+const L_PART_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for num_of_chunks
-const T_NUM_CHUNKS: DataType = DataType.UINT16
+const L_NUM_CHUNKS: TypeLength = TypeLength.UINT16
 
 ## Byte length for chunk_id
-const T_CHUNK_ID: DataType = DataType.UINT16
+const L_CHUNK_ID: TypeLength = TypeLength.UINT16
 
 ## Byte length for data length
-const T_DATA_LENGTH: DataType = DataType.UINT32
+const L_DATA_LENGTH: TypeLength = TypeLength.UINT32
 
 ## Byte length for data
-const T_DATA_BLOCK: DataType = DataType.BLOCK
+const L_DATA_BLOCK: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for multi_part_id
 const O_PART_ID: int = 0
 
 ## Byte offset for num_of_chunks
-const O_NUM_CHUNKS: int = O_PART_ID + T_PART_ID
+const O_NUM_CHUNKS: int = O_PART_ID + L_PART_ID
 
 ## Byte offset for chunk_id
-const O_CHUNK_ID: int = O_NUM_CHUNKS + T_NUM_CHUNKS
+const O_CHUNK_ID: int = O_NUM_CHUNKS + L_NUM_CHUNKS
 
 ## Byte offset for data length
-const O_DATA_LENGTH: int = O_CHUNK_ID + T_CHUNK_ID
+const O_DATA_LENGTH: int = O_CHUNK_ID + L_CHUNK_ID
 
 ## Byte offset for data
-const O_DATA_BLOCK: int = O_DATA_LENGTH + T_DATA_LENGTH
+const O_DATA_BLOCK: int = O_DATA_LENGTH + L_DATA_LENGTH
 
 
 ## String attribute for multi_part_id

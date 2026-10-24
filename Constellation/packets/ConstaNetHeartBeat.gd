@@ -14,7 +14,7 @@ enum Mode {
 
 
 ## Byte length for the Mode
-const T_MODE: DataType = DataType.UINT16
+const L_MODE: TypeLength = TypeLength.UINT16
 
 ## Byte offset for the Mode
 const O_MODE: int = 0
@@ -23,7 +23,7 @@ const O_MODE: int = 0
 const A_MODE: String = "mode"
 
 ## Message length
-const MESSAGE_LENGTH: int = O_MODE + T_MODE
+const MESSAGE_LENGTH: int = O_MODE + L_MODE
 
 
 ## Type of attribute

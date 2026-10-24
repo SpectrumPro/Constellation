@@ -6,17 +6,17 @@ class_name ConstaNetGoodbye extends ConstaNetHeadder
 
 
 ## Byte length for the length of reason string
-const T_REASON_LENGTH: DataType = DataType.UINT16
+const L_REASON_LENGTH: TypeLength = TypeLength.UINT16
 
 ## Byte length for the reason string
-const T_REASON_STRING: DataType = DataType.BLOCK
+const L_REASON_STRING: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for reason length
 const O_REASON_LENGTH: int = 0
 
 ## Byte offset for reason string
-const O_REASON_STRING: int = O_REASON_LENGTH + T_REASON_LENGTH
+const O_REASON_STRING: int = O_REASON_LENGTH + L_REASON_LENGTH
 
 
 ## String attribute for reason

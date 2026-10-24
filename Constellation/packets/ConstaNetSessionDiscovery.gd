@@ -6,41 +6,41 @@ class_name ConstaNetSessionDiscovery extends ConstaNetHeadder
 
 
 ## Byte length for the session ID
-const T_SESSION_ID: DataType = DataType.NODEID
+const L_SESSION_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for the session master node ID
-const T_SESSION_MASTER: DataType = DataType.NODEID
+const L_SESSION_MASTER: TypeLength = TypeLength.NODEID
 
 ## Byte length for the session name length
-const T_SESSION_NAME_LENGTH: DataType = DataType.UINT16
+const L_SESSION_NAME_LENGTH: TypeLength = TypeLength.UINT16
 
 ## Byte length for the session name
-const T_SESSION_NAME: DataType = DataType.BLOCK
+const L_SESSION_NAME: TypeLength = TypeLength.BLOCK
 
 ## Byte length for lenght of nodes
-const T_NUM_NODES: DataType = DataType.UINT16
+const L_NUM_NODES: TypeLength = TypeLength.UINT16
 
 ## Byte length for the nodes list
-const T_NODES: DataType = DataType.BLOCK
+const L_NODES: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for the session ID
 const O_SESSION_ID: int = 0
 
 ## Byte offset for the session master node ID
-const O_SESSION_MASTER: int = O_SESSION_ID + T_SESSION_ID
+const O_SESSION_MASTER: int = O_SESSION_ID + L_SESSION_ID
 
 ## Byte offset for the session name length
-const O_SESSION_NAME_LENGTH: int = O_SESSION_MASTER + T_SESSION_MASTER
+const O_SESSION_NAME_LENGTH: int = O_SESSION_MASTER + L_SESSION_MASTER
 
 ## Byte offset for the session name
-const O_SESSION_NAME: int = O_SESSION_NAME_LENGTH + T_SESSION_NAME_LENGTH
+const O_SESSION_NAME: int = O_SESSION_NAME_LENGTH + L_SESSION_NAME_LENGTH
 
 ## Byte offset for length of nodes
-const O_NUM_NODES: int = O_SESSION_NAME + T_SESSION_NAME
+const O_NUM_NODES: int = O_SESSION_NAME + L_SESSION_NAME
 
 ## Byte offset for nodes
-const O_NODES: int = O_NUM_NODES + T_NUM_NODES
+const O_NODES: int = O_NUM_NODES + L_NUM_NODES
 
 
 ## String attribute for the session ID
@@ -97,7 +97,7 @@ func _get_as_packet() -> PackedByteArray:
 	result.resize(
 		MESSAGE_LENGTH + 
 		name_buffer.size() + 
-		T_NUM_NODES
+		L_NUM_NODES
 	)
 	
 	encode_node_id(O_SESSION_ID, session_id, result)
@@ -111,7 +111,7 @@ func _get_as_packet() -> PackedByteArray:
 	for node_id: String in nodes:
 		var id_buffer: PackedByteArray = get_id_as_buffer(node_id)
 		
-		id_buffer.resize(NODE_ID_LENGTH + DataType.INT16)
+		id_buffer.resize(NODE_ID_LENGTH + TypeLength.INT16)
 		id_buffer.encode_u16(NODE_ID_LENGTH, nodes[node_id])
 		
 		result.append_array(id_buffer)
@@ -157,8 +157,8 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	var offset: int = p_name_length
 	var p_num_nodes: int = p_packet.decode_u16(O_NUM_NODES + offset)
 	
-	if p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + DataType.INT16)) + offset:
-		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + DataType.INT16)) + offset) == true")
+	if p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + TypeLength.INT16)) + offset:
+		_network._log_warn("Unable to parse ConstaNetSessionAnnounce. (p_packet.size() < (p_num_nodes * (NODE_ID_LENGTH + TypeLength.INT16)) + offset) == true")
 		return
 	
 	var p_nodes: Dictionary[String, int] = {}
@@ -168,7 +168,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 		offset += NODE_ID_LENGTH
 		
 		p_nodes[node_id] = p_packet.decode_s16(O_NODES + offset)
-		offset += DataType.INT16
+		offset += TypeLength.INT16
 	
 	session_id = p_session_id
 	session_master = p_session_master

@@ -6,23 +6,23 @@ class_name ConstaNetSessionSetPriority extends ConstaNetHeadder
 
 
 ## Byte length for the session ID
-const T_SESSION_ID: DataType = DataType.NODEID
+const L_SESSION_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for the node ID
-const T_NODE_ID: DataType = DataType.NODEID
+const L_NODE_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for the position
-const T_POSITION: DataType = DataType.UINT16
+const L_POSITION: TypeLength = TypeLength.UINT16
 
 
 ## Byte offset for the session ID
 const O_SESSION_ID: int = 0
 
 ## Byte offset for the node ID
-const O_NODE_ID: int = O_SESSION_ID + T_SESSION_ID
+const O_NODE_ID: int = O_SESSION_ID + L_SESSION_ID
 
 ## Byte offset for the position
-const O_POSITION: int = O_NODE_ID + T_NODE_ID
+const O_POSITION: int = O_NODE_ID + L_NODE_ID
 
 
 ## String attribute for the session ID
@@ -36,7 +36,7 @@ const A_POSITION: String = "position"
 
 
 ## Message size, fixed
-const MESSAGE_SIZE: int = O_POSITION + T_POSITION
+const MESSAGE_SIZE: int = O_POSITION + L_POSITION
 
 
 ## The UUID of this session

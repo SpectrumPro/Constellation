@@ -14,28 +14,29 @@ enum Attribute {
 
 
 ## Byte length for session_id
-const T_SESSION_ID: DataType = DataType.NODEID
+const L_SESSION_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for attribute
-const T_ATTRIBUTE: DataType = DataType.UINT16
+const L_ATTRIBUTE: TypeLength = TypeLength.UINT16
 
-const T_VALUE_LENGTH: DataType = DataType.UINT16
+## Byte length for value content length
+const L_VALUE_LENGTH: TypeLength = TypeLength.UINT16
 
 ## Byte length for value
-const T_VALUE: DataType = DataType.BLOCK
+const L_VALUE: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for session_id
 const O_SESSION_ID: int = 0
 
 ## Byte offset for attribute
-const O_ATTRIBUTE: int = O_SESSION_ID + T_SESSION_ID
+const O_ATTRIBUTE: int = O_SESSION_ID + L_SESSION_ID
 
 ## Byte offset for value size
-const O_VALUE_LENGTH: int = O_ATTRIBUTE + T_ATTRIBUTE
+const O_VALUE_LENGTH: int = O_ATTRIBUTE + L_ATTRIBUTE
 
 ## Byte offset for value data
-const O_VALUE: int = O_VALUE_LENGTH + T_VALUE_LENGTH
+const O_VALUE: int = O_VALUE_LENGTH + L_VALUE_LENGTH
 
 
 ## String attribute for session_id

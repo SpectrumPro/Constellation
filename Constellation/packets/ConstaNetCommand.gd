@@ -6,29 +6,29 @@ class_name ConstaNetCommand extends ConstaNetHeadder
 
 
 ## Byte length for in_session
-const T_IN_SESSION: DataType = DataType.NODEID
+const L_IN_SESSION: TypeLength = TypeLength.NODEID
 
 ## Byte length for data_type
-const T_DATA_TYPE: DataType = DataType.UINT16
+const L_DATA_TYPE: TypeLength = TypeLength.UINT16
 
 ## Byte length for command size
-const T_DATA_LENGTH: DataType = DataType.UINT32
+const L_DATA_LENGTH: TypeLength = TypeLength.UINT32
 
 ## Byte length for the command
-const T_COMMAND: DataType = DataType.BLOCK
+const L_COMMAND: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for in_session
 const O_IN_SESSION: int = 0
 
 ## Byte offset for data_type
-const O_DATA_TYPE: int = O_IN_SESSION + T_IN_SESSION
+const O_DATA_TYPE: int = O_IN_SESSION + L_IN_SESSION
 
 ## Byte offset for command size
-const O_DATA_LENGTH: int = O_DATA_TYPE + T_DATA_TYPE
+const O_DATA_LENGTH: int = O_DATA_TYPE + L_DATA_TYPE
 
 ## Byte offset for command data
-const O_COMMAND: int = O_DATA_LENGTH + T_DATA_LENGTH
+const O_COMMAND: int = O_DATA_LENGTH + L_DATA_LENGTH
 
 
 ## String attribute for command DataType

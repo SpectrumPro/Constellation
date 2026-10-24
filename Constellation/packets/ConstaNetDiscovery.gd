@@ -6,41 +6,41 @@ class_name ConstaNetDiscovery extends ConstaNetHeadder
 
 
 ## Byte length for the node IP address
-const T_NODE_IP: DataType = DataType.IPV4
+const L_NODE_IP: TypeLength = TypeLength.IPV4
 
 ## Byte length for the RoleFlags
-const T_ROLE_FLAGS: DataType = DataType.UINT16
+const L_ROLE_FLAGS: TypeLength = TypeLength.UINT16
 
 ## Byte length for the TCP port
-const T_TCP_PORT: DataType = DataType.UINT16
+const L_TCP_PORT: TypeLength = TypeLength.UINT16
 
 ## Byte length for the UDP port
-const T_UDP_PORT: DataType = DataType.UINT16
+const L_UDP_PORT: TypeLength = TypeLength.UINT16
 
 ## Byte length for the name length
-const T_NAME_LENGTH: DataType = DataType.UINT16
+const L_NAME_LENGTH: TypeLength = TypeLength.UINT16
 
 ## Byte length for the node name
-const T_NODE_NAME: DataType = DataType.BLOCK
+const L_NODE_NAME: TypeLength = TypeLength.BLOCK
 
 
 ## Byte offset for the node IP address
 const O_NODE_IP: int = 0
 
 ## Byte offset for the RoleFlags
-const O_ROLE_FLAGS: int = O_NODE_IP + T_NODE_IP
+const O_ROLE_FLAGS: int = O_NODE_IP + L_NODE_IP
 
 ## Byte offset for the TCP port
-const O_TCP_PORT: int = O_ROLE_FLAGS + T_ROLE_FLAGS
+const O_TCP_PORT: int = O_ROLE_FLAGS + L_ROLE_FLAGS
 
 ## Byte offset for the UDP port
-const O_UDP_PORT: int = O_TCP_PORT + T_TCP_PORT
+const O_UDP_PORT: int = O_TCP_PORT + L_TCP_PORT
 
 ## Byte offset for the name length
-const O_NAME_LENGTH: int = O_UDP_PORT + T_UDP_PORT
+const O_NAME_LENGTH: int = O_UDP_PORT + L_UDP_PORT
 
 ## Byte offset for the node name
-const O_NODE_NAME: int = O_NAME_LENGTH + T_NAME_LENGTH
+const O_NODE_NAME: int = O_NAME_LENGTH + L_NAME_LENGTH
 
 
 ## String attribute for node IP address

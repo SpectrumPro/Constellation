@@ -42,8 +42,8 @@ enum RoleFlags {
 }
 
 
-## Enum for data types
-enum DataType {
+## Enum for data type lengths
+enum TypeLength {
 	UINT8		= 1,
 	INT8		= 1,
 	BOOL		= 1,
@@ -83,29 +83,29 @@ static var ClassTypes: Dictionary[int, Script] = {
 
 
 ## Byte length for VERSION number
-const T_PROTO_VERSION: DataType = DataType.UINT16
+const L_PROTO_VERSION: TypeLength = TypeLength.UINT16
 
 ## Byte length for message size
-const T_MSG_SIZE: DataType = DataType.UINT64
+const L_MSG_SIZE: TypeLength = TypeLength.UINT64
 
 ## Byte length for message type
-const T_MSG_TYPE: DataType = DataType.UINT16
+const L_MSG_TYPE: TypeLength = TypeLength.UINT16
 
 ## Byte length for message flags
-const T_MSG_FLAGS: DataType = DataType.UINT16
+const L_MSG_FLAGS: TypeLength = TypeLength.UINT16
 
 
 ## Byte offset for VERSION number
 const O_PROTO_VERSION: int = 0
 
 ## Byte offset for message size
-const O_MSG_SIZE: int = O_PROTO_VERSION + T_PROTO_VERSION
+const O_MSG_SIZE: int = O_PROTO_VERSION + L_PROTO_VERSION
 
 ## Byte offset for message type
-const O_MSG_TYPE: int = O_MSG_SIZE + T_MSG_SIZE
+const O_MSG_TYPE: int = O_MSG_SIZE + L_MSG_SIZE
 
 ## Byte offset for message flags
-const O_MSG_FLAGS: int = O_MSG_TYPE + T_MSG_TYPE
+const O_MSG_FLAGS: int = O_MSG_TYPE + L_MSG_TYPE
 
 
 ## String attribute for protocal version
@@ -128,16 +128,16 @@ const A_MSG_TARGET: String = "target_id"
 const VERSION: int = 5
 
 ## Byte length for a NodeID
-const NODE_ID_LENGTH: int = DataType.NODEID
+const NODE_ID_LENGTH: int = TypeLength.NODEID
 
 ## Length of a ConstaNetHeadder, without origin and target NodeIDs
-const HEADDER_LENGTH_NO_ID: int = O_MSG_FLAGS + T_MSG_FLAGS
+const HEADDER_LENGTH_NO_ID: int = O_MSG_FLAGS + L_MSG_FLAGS
 
 ## Length of a ConstaNetHeadder
 const HEADDER_LENGTH: int = HEADDER_LENGTH_NO_ID + NODE_ID_LENGTH + NODE_ID_LENGTH
 
 ## Length of a IPv4 Address
-const IPV4_LENGTH: int = DataType.IPV4
+const IPV4_LENGTH: int = TypeLength.IPV4
 
 
 ## The type of this ConstaNET packet

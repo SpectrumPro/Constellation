@@ -75,12 +75,28 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	super._init(p_uuid, p_args)
 	_set_class_name("ConstellationSession")
 	
-	_settings.register_setting("Master", Data.Type.OBJECT, set_master, get_session_master, [master_changed]).set_class_filter(NetworkItem, ConstellationNode)
-	_settings.register_status("MemberCount", Data.Type.INT, get_number_of_nodes, [node_joined, node_left])
+	_settings.register_setting(
+		"Master", 
+		Data.Type.OBJECT, 
+		set_master, 
+		get_session_master, 
+		[master_changed]
+	).set_class_filter(NetworkItem, ConstellationNode)
+	
+	_settings.register_status(
+		"MemberCount", 
+		Data.Type.INT, 
+		get_number_of_nodes, 
+		[node_joined, node_left]
+	)
 
 
 ## Sends a command to the session, using p_node_filter as the NodeFilter
-func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.AUTO, p_nodes: Array[NetworkNode] = []) -> Error:
+func send_command(
+	p_command: Variant, 
+	p_node_filter: NodeFilter = NodeFilter.AUTO, 
+	p_nodes: Array[NetworkNode] = []
+) -> Error:
 	var message: ConstaNetCommand = ConstaNetCommand.new()
 	
 	message.command = p_command
@@ -90,7 +106,11 @@ func send_command(p_command: Variant, p_node_filter: NodeFilter = NodeFilter.AUT
 
 
 ## Sends a pre-existing ConstaNetCommand message to the session
-func send_pre_existing_command(p_command: ConstaNetCommand, p_node_filter: NodeFilter = NodeFilter.AUTO, p_nodes: Array[NetworkNode] = []) -> Error:
+func send_pre_existing_command(
+	p_command: ConstaNetCommand, 
+	p_node_filter: NodeFilter = NodeFilter.AUTO, 
+	p_nodes: Array[NetworkNode] = []
+) -> Error:
 	var local_node: ConstellationNode = _network.get_local_node()
 	p_command.in_session = _session_id
 	p_command.origin_id = local_node.get_node_id()
@@ -293,12 +313,17 @@ func _set_session_name(p_name: String) -> bool:
 	return true
 
 
-## Sets the priority index of a node, pass -1 to remove the node from the priority order, returns the new priority
+## Sets the priority index of a node.
+##Ppass -1 to remove the node from the priority order, returns the new priority
 func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 	var requested_position: int = clampi(p_position, -1, MAX_NODES)
 	
 	if not _nodes.has(p_node):
-		push_error("Given node does not exist in this session")
+		_network._log_error(
+			"_set_node_priority: The given node: \"", 
+			p_node.get_node_name(), 
+			"\" does not exist in this session"
+		)
 		return -1
 	
 	if _node_priorities.right(p_node) == requested_position:
@@ -355,11 +380,15 @@ func _get_next_priority_index() -> int:
 ## Adds a node into this session
 func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if _nodes.has(p_node):
-		push_error("_add_node: Given node already exists in this session")
+		_network._log_error(
+			"_add_node: The given node: \"", 
+			p_node.get_node_name(), 
+			"\" already exists in this session"
+		)
 		return false
 	
 	if _nodes.size() > MAX_NODES:
-		push_error("_add_node: Max number of nodes has been reached in this session")
+		_network._log_error("_add_node: Max number of nodes has been reached in this session")
 		return false
 	
 	_nodes.append(p_node)
@@ -367,7 +396,11 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 	_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
 	
 	if not p_node.is_local() and _network.get_local_node().get_session() == self and not p_node.is_in_connection_state():
-		_network._logv("A new ConstellationNode: \"", p_node.get_node_name(), "\" has joined the current session. Initalizing auto-connect")
+		_network._logv(
+			"A new ConstellationNode: \"", 
+			p_node.get_node_name(), 
+			"\" has joined the current session. Initalizing auto-connect"
+		)
 		p_node.connect_node_and_add_lock(self)
 	
 	node_joined.emit(p_node)
@@ -438,20 +471,27 @@ func _update_with(p_message: ConstaNetSessionDiscovery) -> bool:
 	for node_id: String in new_nodes:
 		_add_node(_network.get_node_from_id(node_id, true), false, new_nodes[node_id])
 	
-	#TODO, this feels jankey, maybe add check to only allow this method to run when the session is unknown???
-	
 	return true
 
 
 ## Called when the ConnectionState changes on any node in this session
-func _on_node_connection_state_changed(p_connection_state: ConstellationNode.ConnectionState, p_node: ConstellationNode) -> void:
+func _on_node_connection_state_changed(
+	p_connection_state: ConstellationNode.ConnectionState, 
+	p_node: ConstellationNode
+) -> void:
 	if _network.get_local_node() not in _nodes:
 		return
 	
-	_network._logv("ConnectionState of: ", p_node.get_node_name(), ", changed to: ", ConstellationNode.ConnectionState.keys()[p_connection_state], ", in session: ", get_session_name())
+	_network._logv(
+		"ConnectionState of: ", p_node.get_node_name(), 
+		", changed to: ", ConstellationNode.ConnectionState.keys()[p_connection_state], 
+		", in session: ", get_session_name()
+	)
 	
 	match p_connection_state:
-		ConstellationNode.ConnectionState.UNKNOWN, ConstellationNode.ConnectionState.DISCOVERED, ConstellationNode.ConnectionState.LOST_CONNECTION:
+		ConstellationNode.ConnectionState.UNKNOWN, \
+		ConstellationNode.ConnectionState.DISCOVERED, \
+		ConstellationNode.ConnectionState.LOST_CONNECTION:
 			if p_node == _session_master:
 				_elect_new_master()
 		

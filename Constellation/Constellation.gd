@@ -126,7 +126,14 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
 	
-	settings_manager.register_setting("Session", Data.Type.OBJECT, _local_node.set_session, _local_node.get_session, [_local_node.session_changed]).set_class_filter(NetworkItem, ConstellationSession)
+	settings_manager.register_setting(
+		"Session", 
+		Data.Type.OBJECT, 
+		_local_node.set_session, 
+		_local_node.get_session, 
+		[_local_node.session_changed]
+	).set_class_filter(NetworkItem, ConstellationSession)
+	
 	set_process(false)
 
 
@@ -282,7 +289,11 @@ func restart_node() -> void:
 
 
 ## Sends a command to the session, using p_node_filter as the NodeFilter
-func send_command(p_command: Variant, p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER, p_nodes: Array[NetworkNode] = []) -> Error:
+func send_command(
+	p_command: Variant, 
+	p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER, 
+	p_nodes: Array[NetworkNode] = []
+) -> Error:
 	if not _local_node.get_session():
 		return ERR_UNAVAILABLE
 	
@@ -442,7 +453,10 @@ func _set_network_state(p_network_state: NetworkState) -> bool:
 	_logv("NetworkState changed to: ", NetworkState.keys()[p_network_state])
 	
 	_network_state = p_network_state
-	network_state_changed.emit(_network_state, _network_state_err_code if _network_state == NetworkState.ERROR else OK)
+	network_state_changed.emit(
+		_network_state, 
+		_network_state_err_code if _network_state == NetworkState.ERROR else OK
+	)
 	
 	return true
 
@@ -598,7 +612,10 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 		return ERR_UNAVAILABLE
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
-	_logv("Sent MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], ", errcode: ", error_string(tx_error))
+	_logv(
+		"Sent MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], 
+		", errcode: ", error_string(tx_error)
+	)
 	
 	if tx_error:
 		_check_network_link()
@@ -954,10 +971,12 @@ class ConstellationConfig extends Object:
 	## A String prefix to print before all message logs
 	static var log_prefix: String = ""
 	
-	## Default address to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	## Default address to bind to. 
+	## Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
 	static var bind_address: String = "127.0.0.1"
 	
-	## Default port to bind to. Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
+	## Default port to bind to. 
+	## Due to the use of multicast, binding to loopback does not work, it is here as a default for all platforms
 	static var bind_interface: String = "lo"
 	
 	## File location for a user config override
@@ -978,7 +997,8 @@ class ConstellationConfig extends Object:
 	## Auto rejoins the last session if it still exists on the network
 	static var session_auto_rejoin: bool = true
 	
-	## True if this node should auto create a session once online, asuming previous session is is null and the node is not already in a session
+	## True if this node should auto create a session once online, 
+	## asuming previous session is is null and the node is not already in a session
 	static var auto_create_session: bool = true
 	
 	## The CoreClassListDB for storing all NetworkItem classes

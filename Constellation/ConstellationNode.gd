@@ -159,7 +159,7 @@ func connect_node() -> Error:
 		return ERR_UNAVAILABLE
 	
 	if _connection_state == ConnectionState.CONNECTED:
-		disconnect_node()
+		disconnect_node(false)
 	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	_tcp_socket.set_no_delay(true)
@@ -174,18 +174,23 @@ func connect_node() -> Error:
 	return err_code
 
 
-## Disconnects TCP from this node. Any active connection locks are auto removed
-func disconnect_node() -> void:
+## Disconnects TCP from this node. if p_clear_locks == true, all connection locks are removed
+func disconnect_node(p_clear_locks: bool = true) -> void:
 	_network._logv("Disconnecting TCP from ConstellationNode: \"", _name, "\"")
 	
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 	
-	_connection_locks.clear()
+	if p_clear_locks:
+		_connection_locks.clear()
 
 
 ## Adds a connection lock and calls connect_node if not already connected
 func connect_node_and_add_lock(p_key: Variant) -> void:
+	if is_local():
+		push_error("connect_node_and_add_lock: can't be called on the local node")
+		return
+	
 	_connection_locks.add(p_key)
 	
 	if not is_tcp_connected():
@@ -194,6 +199,10 @@ func connect_node_and_add_lock(p_key: Variant) -> void:
 
 ## Removes a connection lock, if not locks remain disconnect_node is called
 func remove_connection_lock(p_key: Variant) -> void:
+	if is_local():
+		push_error("remove_connection_lock: can't be called on the local node")
+		return
+	
 	_connection_locks.remove(p_key)
 	
 	if not _connection_locks.size():
@@ -296,6 +305,9 @@ func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_pri
 	_network._send_message_mcast(message)
 	
 	for node: ConstellationNode in p_session.get_nodes():
+		if node == self:
+			continue
+		
 		node.connect_node_and_add_lock(p_session)
 	
 	return true
@@ -321,6 +333,9 @@ func leave_session() -> bool:
 	message.set_announcement(true)
 	
 	for node: ConstellationNode in _session.get_nodes():
+		if node == self:
+			continue
+		
 		node.remove_connection_lock(_session)
 	
 	_set_session(null)

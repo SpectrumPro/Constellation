@@ -365,7 +365,7 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 	_node_connections.connect_object(p_node, true)
 	_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
 	
-	if _network.get_local_node().get_session() == self and not p_node.is_in_connection_state():
+	if not p_node.is_local() and _network.get_local_node().get_session() == self and not p_node.is_in_connection_state():
 		_network._logv("A new ConstellationNode: \"", p_node.get_node_name(), "\" has joined the current session. Initalizing auto-connect")
 		p_node.connect_node_and_add_lock(self)
 	
@@ -390,7 +390,7 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 	if p_node == _session_master:
 		_elect_new_master()
 	
-	if _network.get_local_node().get_session() == self:
+	if not p_node.is_local() and _network.get_local_node().get_session() == self:
 		p_node.remove_connection_lock(self)
 	
 	node_left.emit(p_node)

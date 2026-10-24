@@ -21,6 +21,9 @@ const UDP_MTP: int = 1000
 ## Time in seconds to wait for a disconnect ACK message before forcing a disconnect
 const DISCONNECT_ACK_TIMEOUT: float = 2.0
 
+## Mutiplyer in seconds for the discovery time to account for a dropped packet or other delay
+const DISCOVERY_INTERVAL_MARGIN: float = 2.5
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -64,6 +67,9 @@ var _udp_socket: PacketPeerUDP = PacketPeerUDP.new()
 ## TCP peer to connect to the node
 var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 
+## The discovery interval of this node in seconds
+var _discovery_interval: int = 0
+
 ## Previous TCP Peer status
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 
@@ -79,6 +85,9 @@ var _has_received_heartbeat_ack: bool = false
 ## Timer to wait for a disconnect ACK message before forcing a disconnect
 var _disconnect_ack_timeout_timer: Timer = Timer.new()
 
+## Timer to countdown between discovery messages to check for an offline node
+var _discovery_timeout_timer: Timer = Timer.new()
+
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
 static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationNode:
@@ -91,6 +100,7 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._node_ip = p_disco.node_ip
 	node._node_udp_port = p_disco.udp_port
 	node._node_tcp_port = p_disco.tcp_port
+	node._discovery_interval = p_disco.disco_time
 	node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
 	
 	return node
@@ -151,11 +161,20 @@ func _ready() -> void:
 	_disconnect_ack_timeout_timer.set_wait_time(DISCONNECT_ACK_TIMEOUT)
 	_disconnect_ack_timeout_timer.timeout.connect(_on_disconnect_act_timeout)
 	
+	_discovery_timeout_timer.set_autostart(false)
+	_discovery_timeout_timer.set_one_shot(false)
+	_discovery_timeout_timer.set_wait_time(_discovery_interval)
+	_discovery_timeout_timer.timeout.connect(_on_discovery_timeout)
+	
 	add_child(_disconnect_ack_timeout_timer)
+	
+	if not is_local():
+		add_child(_discovery_timeout_timer)
 
 
 ## Called each frame
 func _process(delta: float) -> void:
+	#print(_discovery_timeout_timer.wait_time)
 	_tcp_socket.poll()
 	var status: StreamPeerTCP.Status = _tcp_socket.get_status()
 	
@@ -425,6 +444,11 @@ func get_session_id() -> String:
 ## Returns all the current connection locks
 func get_connection_locks() -> Array:
 	return _connection_locks.get_as_array()
+
+
+## Returns the delay in seconds between this node sending a discovery message
+func get_discovery_interval() -> int:
+	return _discovery_interval
 
 
 ## Sends a message to set the name of this node on the network
@@ -881,6 +905,9 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	_node_ip = p_discovery.node_ip
 	_node_udp_port = p_discovery.udp_port
 	_node_tcp_port = p_discovery.tcp_port
+	_discovery_interval = p_discovery.disco_time
+	
+	_discovery_timeout_timer.start(_discovery_interval * DISCOVERY_INTERVAL_MARGIN)
 	
 	if reconnect:
 		_udp_socket.close()
@@ -955,3 +982,11 @@ func _on_disconnect_act_timeout() -> void:
 	if _connection_state == ConnectionState.AWAITING_DISCONNECT_ACK:
 		_network._logv("Node: \"", _name, "\" has taken too to responde to Disconnect ACK. Forcing a disconnect")
 		_final_disconnect()
+
+
+## Called when the discovery timeer times out
+func _on_discovery_timeout() -> void:
+	if _connection_state == ConnectionState.DISCOVERED:
+		_network._log("Node: \"", get_node_name(), "\" has taken too long to respond ")
+		_set_connection_status(ConnectionState.OFFLINE)
+		_discovery_timeout_timer.stop()

@@ -601,6 +601,7 @@ func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetD
 	message.role_flags = _role_flags
 	message.tcp_port = _tcp_port
 	message.udp_port = _udp_port
+	message.disco_time = NODE_DISCO_INTERVAL
 	message.flags |= p_flags
 	
 	return message

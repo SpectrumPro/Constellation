@@ -670,7 +670,7 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 		ConstaNetSetAttribute.Attribute.SESSION:
 			var session: ConstellationSession = _network.get_session_from_id(
 				p_set_attribute.value, 
-				p_set_attribute.value.is_empty()
+				not p_set_attribute.value.is_empty()
 			)
 			
 			if is_local() and p_set_attribute.is_request():

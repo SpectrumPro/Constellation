@@ -404,7 +404,7 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 
 ## Elects a new session master from the proirity order
 func _elect_new_master() -> ConstellationNode:
-	if _nodes.has(_session_master) and _session_master.get_connection_state() == NetworkNode.ConnectionState.CONNECTED:
+	if _nodes.has(_session_master) and _session_master.is_in_connection_state():
 		return _session_master
 	
 	var candidate: ConstellationNode = _node_priorities.left(_priority_order.get(0))

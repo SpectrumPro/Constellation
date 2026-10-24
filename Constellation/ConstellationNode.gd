@@ -301,14 +301,14 @@ func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_pri
 	message.value = p_session.get_session_id()
 	message.set_announcement(true)
 	
-	_set_session(p_session, p_auto_priority, p_priority)
-	_network._send_message_mcast(message)
-	
 	for node: ConstellationNode in p_session.get_nodes():
 		if node == self:
 			continue
 		
 		node.connect_node_and_add_lock(p_session)
+	
+	_set_session(p_session, p_auto_priority, p_priority)
+	_network._send_message_mcast(message)
 	
 	return true
 
@@ -332,14 +332,16 @@ func leave_session() -> bool:
 	message.value = ""
 	message.set_announcement(true)
 	
-	for node: ConstellationNode in _session.get_nodes():
+	var session_nodes: Array[NetworkNode] = _session.get_nodes()
+	
+	_set_session(null)
+	_network._send_message_mcast(message)
+	
+	for node: ConstellationNode in session_nodes:
 		if node == self:
 			continue
 		
 		node.remove_connection_lock(_session)
-	
-	_set_session(null)
-	_network._send_message_mcast(message)
 	
 	return true
 

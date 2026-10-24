@@ -479,12 +479,13 @@ func _set_connection_status(p_status: ConnectionState) -> bool:
 	return true
 
 
-## Sets the nodes ID
+## Sets the nodes ID. WARNING: this will change the NetworkItems's uuid
 func _set_node_id(p_node_id: String) -> bool:
 	if p_node_id == _node_id:
 		return false
 	
 	_node_id = p_node_id
+	_uuid = _node_id
 	return true
 
 

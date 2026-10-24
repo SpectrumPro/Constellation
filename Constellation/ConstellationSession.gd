@@ -254,12 +254,13 @@ func delete() -> void:
 		_remove_node(node)
 
 
-## Sets the SessionID
+## Sets the SessionID, WARNING: this will change the NetworkItem's uuid
 func _set_session_id(p_session_id: String) -> bool:
 	if p_session_id == _session_id:
 		return false
 	
 	_session_id = p_session_id
+	_uuid = _session_id
 	return true
 
 

@@ -209,6 +209,7 @@ func connect_node() -> Error:
 		_set_connection_status(ConnectionState.CONNECTION_ERROR)
 	else:
 		_set_connection_status(ConnectionState.CONNECTING)
+		_tcp_socket.set_no_delay(true)
 	
 	return err_code
 

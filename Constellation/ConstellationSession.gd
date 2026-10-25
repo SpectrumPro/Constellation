@@ -440,7 +440,12 @@ func _elect_new_master() -> ConstellationNode:
 	if _nodes.has(_session_master) and _session_master.is_in_connection_state():
 		return _session_master
 	
-	var candidate: ConstellationNode = _node_priorities.left(_priority_order.get(0))
+	var candidate: ConstellationNode
+	
+	if _priority_order:
+		candidate = _node_priorities.left(_priority_order[0])
+	else:
+		candidate = null
 	
 	if _set_session_master(candidate):
 		return candidate

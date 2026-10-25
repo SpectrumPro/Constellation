@@ -196,8 +196,10 @@ func connect_node() -> Error:
 	if is_in_connection_state():
 		return ERR_ALREADY_EXISTS
 	
+	if _tcp_socket.get_status() != StreamPeerTCP.Status.STATUS_NONE:
+		_tcp_socket.disconnect_from_host()
+	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
-	_tcp_socket.set_no_delay(true)
 	
 	_network._logv(
 		"Initalizing TCP connection to: ", 
@@ -902,22 +904,26 @@ func _handle_command(p_command: ConstaNetCommand) -> void:
 func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	if p_discovery.target_id or is_local():
 		return
+		
+	var reconnect_udp: bool = _node_ip != p_discovery.node_ip and _node_udp_port != p_discovery.udp_port
+	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip and _node_tcp_port != p_discovery.tcp_port
 	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)
+	_set_node_ip(p_discovery.node_ip)
 	
-	var reconnect: bool = _node_ip != p_discovery.node_ip or _node_udp_port != p_discovery.udp_port
-	
-	_node_ip = p_discovery.node_ip
 	_node_udp_port = p_discovery.udp_port
 	_node_tcp_port = p_discovery.tcp_port
-	_discovery_interval = p_discovery.disco_time
 	
+	_discovery_interval = p_discovery.disco_time
 	_discovery_timeout_timer.start(max(_discovery_interval * DISCOVERY_INTERVAL_MARGIN, 1))
 	
-	if reconnect:
+	if reconnect_udp:
 		_udp_socket.close()
 		_udp_socket.connect_to_host(_node_ip, _node_udp_port)
+	
+	if reconnect_tcp and _connection_locks:
+		connect_node()
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node

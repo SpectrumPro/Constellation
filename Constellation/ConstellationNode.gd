@@ -214,7 +214,10 @@ func connect_node() -> Error:
 
 
 ## Disconnects TCP from this node. if p_clear_locks == true, all connection locks are removed
-func disconnect_node(p_clear_locks: bool = true) -> void:
+func disconnect_node(p_clear_locks: bool = true) -> Error:
+	if not is_in_connection_state():
+		return ERR_DOES_NOT_EXIST
+	
 	_network._logv("Attempting disconnect from: \"", _name, "\"")
 	_disconnect_ack_timeout_timer.start()
 	
@@ -226,6 +229,8 @@ func disconnect_node(p_clear_locks: bool = true) -> void:
 	
 	_ping = NAN
 	ping_changed.emit(_ping)
+	
+	return OK
 
 
 ## Adds a connection lock and calls connect_node if not already connected

@@ -933,7 +933,7 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	_discovery_interval = p_discovery.disco_time
 	_discovery_timeout_timer.start(max(_discovery_interval * DISCOVERY_INTERVAL_MARGIN, 1))
 	
-	if reconnect_udp:
+	if reconnect_udp or not _udp_socket.is_socket_connected():
 		_udp_socket.close()
 		var errcode: Error = _udp_socket.connect_to_host(_node_ip, _node_udp_port)
 		_network._logv(_name, ":_update_from_discovery reconnect_udp == true, errcode: ", error_string(errcode))

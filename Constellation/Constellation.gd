@@ -261,10 +261,15 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_close_network()
 	
 	for node: ConstellationNode in _known_nodes.values():
+		if node == _local_node:
+			continue
+		
 		node.delete()
+		remove_child(node)
 	
 	for session: ConstellationSession in _known_sessions.values():
 		session.delete()
+		remove_child(session)
 	
 	_local_node._set_session(null)
 	
@@ -313,6 +318,7 @@ func create_session(p_name: String) -> NetworkSession:
 	
 	_logv("Creating new ConstellationSession with name: \"", p_name, "\"")
 	var session: ConstellationSession = ConstellationSession.new()
+	add_child(session)
 	
 	session._set_name(p_name)
 	session._set_session_master(_local_node)
@@ -415,9 +421,10 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 			return _unknown_sessions[p_session_id]
 		
 		_log("Unable to find ConstellationSession: \"", p_session_id, "\" localy. Creating unknown session")
-		
 		var unknown_session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
+		
 		_unknown_sessions[p_session_id] = unknown_session
+		add_child(unknown_session)
 		
 		session_created.emit(unknown_session)
 		return unknown_session
@@ -435,9 +442,10 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 			return _unknown_nodes[p_node_id]
 		
 		_logv("Unable to find ConstellationNode: \"", p_node_id, "\" localy. Creating unknown node")
-		
 		var unknown_node: ConstellationNode = ConstellationNode.create_unknown_node(p_node_id)
+		
 		_unknown_nodes[p_node_id] = unknown_node
+		add_child(unknown_node)
 		
 		node_found.emit(unknown_node)
 		return unknown_node
@@ -742,12 +750,11 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 	
 	else:
 		node = ConstellationNode.create_from_discovery(p_discovery)
+		add_child(node)
+		node_found.emit(node)
 	
 	_logv("New ConstellationNode: \"", node.get_node_name(), "\" has been discovered on the network")
 	_known_nodes[p_discovery.origin_id] = node
-	
-	add_child(node)
-	node_found.emit(node)
 
 
 ## Handles a ConstaNetSessionDiscovery
@@ -773,13 +780,13 @@ func _handle_session_discovery(p_session_discovery: ConstaNetSessionDiscovery) -
 		
 		else:
 			session = ConstellationSession.create_from_session_discovery(p_session_discovery)
+			add_child(session)
+			session_created.emit(session)
 		
 		_logv("New ConstellationSession: \"", session.get_uname(), "\" has been discovered on the network")
 		_known_sessions[session.get_session_id()] = session
 		
 		session.delete_requested.connect(_on_session_delete_request)
-		session_created.emit(session)
-		
 		_attempt_session_auto_connect(session)
 
 

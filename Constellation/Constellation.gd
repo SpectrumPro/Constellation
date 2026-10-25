@@ -623,6 +623,7 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
 	_logv(
 		"Sent MCast message of type: ", ConstaNetHeadder.Type.keys()[p_message.type], 
+		", flags: ", p_message.get_flags_human(),
 		", errcode: ", error_string(tx_error)
 	)
 	
@@ -731,9 +732,7 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 
 ## Handles a discovery message
 func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: StreamPeerTCP = null) -> void:
-	if OS.is_stdout_verbose():
-		var flags_string: String = Utils.flags_to_string(p_discovery.flags, ConstaNetHeadder.Flags)
-		_log("Got Discovery ", flags_string, " from: ", p_discovery.node_name)
+	_logv("Got Discovery: ", p_discovery.get_flags_human(), " from: \"", p_discovery.node_name, "\"")
 	
 	if _known_nodes.has(p_discovery.origin_id):
 		return
@@ -746,7 +745,7 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 		node._mark_as_unknown(false)
 		
 		_unknown_nodes.erase(p_discovery.origin_id)
-		_log("Previously unknown ConstellationNode: ", node.get_node_id(), " has been found on the network")
+		_log("Previously unknown Node: \"", node.get_node_id(), "\" has been found on the network")
 	
 	else:
 		node = ConstellationNode.create_from_discovery(p_discovery)

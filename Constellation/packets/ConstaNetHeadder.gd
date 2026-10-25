@@ -206,6 +206,12 @@ func get_target_as_buffer() -> PackedByteArray:
 	return get_id_as_buffer(target_id)
 
 
+## Returns the flags of this header as a human readable string
+## eg Flag1+Flag2
+func get_flags_human() -> String:
+	return Utils.flags_to_string(flags, Flags)
+
+
 ## Returns true if this ConstaNet message is valid
 func is_valid() -> bool:
 	if not type or not origin_id or _origin_version != VERSION:

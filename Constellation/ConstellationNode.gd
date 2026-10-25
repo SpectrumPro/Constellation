@@ -101,7 +101,13 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	node._node_udp_port = p_disco.udp_port
 	node._node_tcp_port = p_disco.tcp_port
 	node._discovery_interval = p_disco.disco_time
-	node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
+	var errcode: Error = node._udp_socket.connect_to_host(p_disco.node_ip, p_disco.udp_port)
+	
+	if errcode:
+		_network._log_error(
+			"create_from_discovery unable to connect to: ", 
+			p_disco.node_ip, ":", p_disco.udp_port
+		)
 	
 	return node
 
@@ -678,8 +684,8 @@ func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUT
 	var errcode: Error = send_message(message, p_transport_mode)
 	
 	_network._logv(
-		"Sending Discovery REQ, via: ", 
-		TransportMode.keys()[p_transport_mode], 
+		"Sent Discovery REQ",
+		", via: ", TransportMode.keys()[p_transport_mode], 
 		", to: ", get_uname(), 
 		", errcode: ", error_string(errcode)
 	)
@@ -691,8 +697,8 @@ func _send_discovery_acknowledment(p_transport_mode: TransportMode = TransportMo
 	var errcode: Error = send_message(message, p_transport_mode)
 	
 	_network._logv(
-		"Sending Discovery ACK, via: ", 
-		TransportMode.keys()[p_transport_mode], 
+		"Sent Discovery ACK",
+		", via: ", TransportMode.keys()[p_transport_mode], 
 		", to: ", get_uname(), 
 		", errcode: ", error_string(errcode)
 	)
@@ -746,6 +752,14 @@ func _send_set_attribute(p_flags: ConstaNetCommand.Flags, p_attribute: ConstaNet
 	set_attribute.value = p_value
 	
 	var errcode: Error = send_message_udp(set_attribute)
+	_network._log(
+		"Sent SetAttribute to: \"", _name, "\"",
+		", attribute: ", ConstaNetSetAttribute.Attribute.keys()[p_attribute],
+		", value: ", str(p_value),
+		", flags: ", set_attribute.get_flags_human(),
+		", errcode: ", error_string(errcode)
+	)
+	
 	return not bool(errcode)
 
 
@@ -772,6 +786,7 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 
 
 ## Handles a ConstaNetDiscovery
+## TODO: reformat and de-duplicate code in this function
 func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	if not is_local():
 		_update_from_discovery(p_discovery)
@@ -904,7 +919,7 @@ func _handle_command(p_command: ConstaNetCommand) -> void:
 func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	if p_discovery.target_id or is_local():
 		return
-		
+	
 	var reconnect_udp: bool = _node_ip != p_discovery.node_ip and _node_udp_port != p_discovery.udp_port
 	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip and _node_tcp_port != p_discovery.tcp_port
 	
@@ -920,10 +935,12 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	
 	if reconnect_udp:
 		_udp_socket.close()
-		_udp_socket.connect_to_host(_node_ip, _node_udp_port)
+		var errcode: Error = _udp_socket.connect_to_host(_node_ip, _node_udp_port)
+		_network._logv(_name, ":_update_from_discovery reconnect_udp == true, errcode: ", error_string(errcode))
 	
 	if reconnect_tcp and _connection_locks:
-		connect_node()
+		var errcode: Error = connect_node()
+		_network._logv(_name, ":_update_from_discovery reconnect_tcp == true, errcode: ", error_string(errcode))
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node

@@ -68,7 +68,7 @@ var _udp_socket: PacketPeerUDP = PacketPeerUDP.new()
 var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 
 ## The discovery interval of this node in seconds
-var _discovery_interval: int = 0
+var _discovery_interval: int = 1
 
 ## Previous TCP Peer status
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
@@ -907,7 +907,7 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	_node_tcp_port = p_discovery.tcp_port
 	_discovery_interval = p_discovery.disco_time
 	
-	_discovery_timeout_timer.start(_discovery_interval * DISCOVERY_INTERVAL_MARGIN)
+	_discovery_timeout_timer.start(max(_discovery_interval * DISCOVERY_INTERVAL_MARGIN, 1))
 	
 	if reconnect:
 		_udp_socket.close()

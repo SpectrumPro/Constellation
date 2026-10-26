@@ -12,7 +12,7 @@ const L_SESSION_ID: TypeLength = TypeLength.NODEID
 const L_NODE_ID: TypeLength = TypeLength.NODEID
 
 ## Byte length for the position
-const L_POSITION: TypeLength = TypeLength.UINT16
+const L_POSITION: TypeLength = TypeLength.INT16
 
 
 ## Byte offset for the session ID
@@ -70,7 +70,7 @@ func _get_as_packet() -> PackedByteArray:
 	
 	encode_node_id(O_SESSION_ID, session_id, result)
 	encode_node_id(O_NODE_ID, node_id, result)
-	result.encode_u16(O_POSITION, position)
+	result.encode_s16(O_POSITION, position)
 	
 	return result
 
@@ -94,7 +94,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	
 	var p_session_id: String = decode_node_id(O_SESSION_ID, p_packet)
 	var p_node_id: String = decode_node_id(O_NODE_ID, p_packet)
-	var p_position: int = p_packet.decode_u16(O_POSITION)
+	var p_position: int = p_packet.decode_s16(O_POSITION)
 	
 	session_id = p_session_id
 	node_id = p_node_id
@@ -103,7 +103,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 
 ## Checks if this ConstaNetSessionSetPriority is valid
 func _is_valid() -> bool:
-	if session_id and node_id and position >= 0:
+	if session_id and node_id and position >= -1:
 		return true
 	
 	return false

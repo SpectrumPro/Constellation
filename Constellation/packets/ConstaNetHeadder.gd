@@ -43,7 +43,7 @@ enum RoleFlags {
 	CONTROLLER			= 1 << 1,	# # Sends control and command messages to the Executer 
 }
 
-## Enum for data type lengths
+## Number of bytes used to store each data type
 enum TypeLength {
 	UINT8		= 1,
 	INT8		= 1,
@@ -126,7 +126,7 @@ const A_MSG_TARGET: String = "target_id"
 
 
 ## Current proto version as uint16
-const VERSION: int = 7
+const VERSION: int = 8
 
 ## Byte length for a NodeID
 const NODE_ID_LENGTH: int = TypeLength.NODEID

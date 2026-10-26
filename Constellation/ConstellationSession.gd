@@ -10,7 +10,8 @@ static var _network: Constellation = null
 
 
 ## Max number of nodes allowed in a session
-const MAX_NODES: int = 65535
+## Signed 16bit interger limit, as thats is the data type used in the network sync message
+const MAX_NODES: int = 32767
 
 
 ## All nodes in this session
@@ -25,10 +26,15 @@ var _node_priorities: RefMap = RefMap.new()
 ## Stores a sorted list of node prioritys
 var _priority_order: Array[int]
 
+## The node that was just added in this process frame
+## Used to decide if ConnectionState.CONNECTING is valid when electing a session master
+var _just_added_node: ConstellationNode = null
+
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
 	_on_node_connection_state_changed,
-	_on_node_no_longer_unknown
+	_on_node_no_longer_unknown,
+	_on_node_role_flags_changed,
 ]).set_prefix("_on_node_")
 
 
@@ -167,6 +173,9 @@ func set_node_priority(p_node: NetworkNode, p_position: int) -> bool:
 	if not _nodes.has(p_node):
 		return false
 	
+	if not p_node.is_executor() and p_position >= 0:
+		return false
+	
 	var new_position: int = _set_node_priority(p_node, p_position)
 	var message: ConstaNetSessionSetPriority = ConstaNetSessionSetPriority.new()
 	
@@ -255,6 +264,11 @@ func get_session_flags() -> int:
 	return _session_flags
 
 
+## Returns true if this session is the active session the local node is in
+func is_active_session() -> bool:
+	return _network.get_local_node().get_session() == self
+
+
 ## Returns true if this session has a master
 func has_session_master() -> bool:
 	return _session_master != null
@@ -263,6 +277,25 @@ func has_session_master() -> bool:
 ## Returns true if the given node is a member of this session
 func has_node_in_session(p_node: ConstellationNode) -> bool:
 	return _nodes.has(p_node)
+
+
+## Returns true if the given node is eligible to be a session master
+## If p_is_new == true, the node is treated as just joining the session. 
+## Thus allowing master asignment even if the node is not connected yet
+func can_be_session_master(p_node: ConstellationNode) -> bool:
+	if not _node_priorities.has_right(p_node):
+		return false
+	
+	var is_new: bool = p_node == _just_added_node
+	var state_valid: bool = p_node.is_in_connection_state() if is_new else p_node.is_node_connected()
+	
+	if not state_valid and is_active_session():
+		return false
+	
+	if not p_node.is_executor():
+		return false
+	
+	return true
 
 
 ## Closes this sessions local object
@@ -292,7 +325,15 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if is_instance_valid(_session_master):
 		_session_master._remove_session_master_mark()
 	
+	if not is_instance_valid(p_session_master):
+		_session_master = null
+		master_changed.emit(null)
+		return true
+	
 	if not _nodes.has(p_session_master):
+		return false
+	
+	if not can_be_session_master(p_session_master):
 		return false
 	
 	_session_master = p_session_master
@@ -316,7 +357,9 @@ func _set_session_name(p_name: String) -> bool:
 ## Sets the priority index of a node.
 ##Ppass -1 to remove the node from the priority order, returns the new priority
 func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
-	var requested_position: int = clampi(p_position, -1, MAX_NODES)
+	if not p_node.is_executor() and p_position >= 0:
+		_network._logv("_set_node_priority: can't asign a priority to a none RoleFlags.EXECUTER node")
+		return -1
 	
 	if not _nodes.has(p_node):
 		_network._log_error(
@@ -325,6 +368,8 @@ func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 			"\" does not exist in this session"
 		)
 		return -1
+	
+	var requested_position: int = clampi(p_position, -1, MAX_NODES)
 	
 	if _node_priorities.right(p_node) == requested_position:
 		return requested_position
@@ -393,9 +438,12 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 	
 	_nodes.append(p_node)
 	_node_connections.connect_object(p_node, true)
-	_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
+	_just_added_node = p_node
 	
-	if not p_node.is_local() and _network.get_local_node().get_session() == self and not p_node.is_in_connection_state():
+	if p_node.is_executor():
+		_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
+	
+	if not p_node.is_local() and is_active_session() and not p_node.is_in_connection_state():
 		_network._logv(
 			"A new ConstellationNode: \"", 
 			p_node.get_node_name(), 
@@ -409,6 +457,8 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 		p_node._set_session(self)
 	
 	_elect_new_master()
+	_just_added_node = null
+	
 	return true
 
 
@@ -440,17 +490,20 @@ func _elect_new_master() -> ConstellationNode:
 	if _nodes.has(_session_master) and _session_master.is_in_connection_state():
 		return _session_master
 	
-	var candidate: ConstellationNode
-	
-	if _priority_order:
-		candidate = _node_priorities.left(_priority_order[0])
-	else:
-		candidate = null
-	
-	if _set_session_master(candidate):
-		return candidate
-	else:
+	if not _priority_order:
+		_set_session_master(null)
 		return null
+	
+	for priority: int in _priority_order:
+		var candidate: ConstellationNode = _node_priorities.left(priority)
+		
+		if can_be_session_master(candidate):
+			if _set_session_master(candidate):
+				return candidate
+			else:
+				return null
+	
+	return null
 
 
 ## Updates the details of this node with a ConstaNetSessionAnnounce message
@@ -508,3 +561,20 @@ func _on_node_connection_state_changed(
 ## Called when any node in this session is found on the network, when previousley unknown
 func _on_node_no_longer_unknown(p_node: ConstellationNode) -> void:
 	node_joined.emit(p_node)
+
+
+## Called when a nodes role flags change
+func _on_node_role_flags_changed(p_flags: int, p_node: ConstellationNode) -> void:
+	if p_node.is_executor() and not _node_priorities.has_right(p_node):
+		_network._logv(
+			"Node: \"", p_node.get_node_name(), 
+			"\" now has flag RoleFlag.EXECUTOR. Asigning priority number"
+		)
+		_set_node_priority(p_node, _get_next_priority_index())
+	
+	elif not p_node.is_executor() and _node_priorities.has_right(p_node):
+		_network._logv(
+			"Node: \"", p_node.get_node_name(), 
+			"\" has lost flag RoleFlag.EXECUTOR. Removing priority number"
+		)
+		_set_node_priority(p_node, -1)

@@ -543,6 +543,11 @@ func is_sesion_master() -> bool:
 	return _is_session_master
 
 
+## Returns true if this node is connected
+func is_node_connected() -> bool:
+	return _connection_state == ConnectionState.CONNECTED
+
+
 ## Returns true if the TCP socket is connected
 func is_tcp_connected() -> bool:
 	var status = _tcp_socket.get_status()

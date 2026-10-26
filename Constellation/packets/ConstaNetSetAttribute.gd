@@ -41,6 +41,7 @@ enum Attribute {
 	UNKNOWN,		## Default State
 	NAME,			## Sets the name of a device
 	IP_ADDR,		## Sets the Ip Address of a supported device
+	ROLE_FLAGS,		## Sets the RoleFlags of the node
 	SESSION,		## Tells the device to join the given session
 }
 

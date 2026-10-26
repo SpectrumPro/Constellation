@@ -496,10 +496,19 @@ func set_node_name(p_name: String) -> void:
 
 ## Sets the role flags
 func set_role_flags(p_role_flags: int) -> bool:
-	if not is_local():
-		return false
+	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new())
 	
-	return _set_role_flags(p_role_flags)
+	set_attribute.attribute = ConstaNetSetAttribute.Attribute.ROLE_FLAGS
+	set_attribute.value = str(p_role_flags)
+	
+	if is_local() and _set_role_flags(p_role_flags):
+		set_attribute.set_announcement(true)
+		return not _network._send_message_mcast(set_attribute)
+	elif not is_local():
+		set_attribute.set_request(true)
+		return not send_message_udp(set_attribute)
+	else:
+		return false
 
 
 ## Returns true if the given connection lock exists
@@ -822,6 +831,12 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 				set_node_name(p_set_attribute.value)
 			elif p_set_attribute.is_announcement():
 				_set_node_name(p_set_attribute.value)
+		
+		ConstaNetSetAttribute.Attribute.ROLE_FLAGS:
+			if is_local() and p_set_attribute.is_request():
+				set_role_flags(int(p_set_attribute.value))
+			elif p_set_attribute.is_announcement():
+				_set_role_flags(int(p_set_attribute.value))
 		
 		ConstaNetSetAttribute.Attribute.SESSION:
 			var session: ConstellationSession = _network.get_session_from_id(

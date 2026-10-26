@@ -797,20 +797,17 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 
 
 ## Handles a ConstaNetDiscovery
-## TODO: reformat and de-duplicate code in this function
 func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	if not is_local():
-		_update_from_discovery(p_discovery)
-		
-		if p_discovery.is_request():
-			_send_discovery_acknowledment()
-		
-		if [ConnectionState.UNKNOWN, ConnectionState.OFFLINE, ConnectionState.LOST_CONNECTION].has(_connection_state):
-			_set_connection_status(ConnectionState.DISCOVERED)
+	if p_discovery.is_request():
+		_send_discovery_acknowledment()
 	
-	else:
-		if p_discovery.is_request():
-			_send_discovery_acknowledment()
+	if is_local():
+		return
+	
+	_update_from_discovery(p_discovery)
+	
+	if is_in_offline_state():
+		_set_connection_status(ConnectionState.DISCOVERED)
 
 
 ## Handles a ConstaNetGoodbye

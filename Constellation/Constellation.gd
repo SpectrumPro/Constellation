@@ -415,6 +415,11 @@ func get_node_id() -> String:
 	return _local_node.get_node_id()
 
 
+## Gets this nodes RoleFlags
+func get_role_flags() -> int:
+	return _local_node.get_role_flags()
+
+
 ## Returns the a session from the Id, or NULL
 func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -> ConstellationSession:
 	if _known_sessions.has(p_session_id):
@@ -610,7 +615,7 @@ func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetD
 	message.target_id = p_target_id
 	message.node_name = get_node_name()
 	message.node_ip = ConstellationConfig.bind_address
-	message.role_flags = _role_flags
+	message.role_flags = get_role_flags()
 	message.tcp_port = _tcp_port
 	message.udp_port = _udp_port
 	message.disco_time = NODE_DISCO_INTERVAL

@@ -24,7 +24,6 @@ const DISCONNECT_ACK_TIMEOUT: float = 2.0
 ## Mutiplyer in seconds for the discovery time to account for a dropped packet or other delay
 const DISCOVERY_INTERVAL_MARGIN: float = 2.5
 
-
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
 
@@ -808,6 +807,9 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	
 	if is_in_offline_state():
 		_set_connection_status(ConnectionState.DISCOVERED)
+	
+	if is_in_discovered_state() and _connection_locks.size():
+		connect_node()
 
 
 ## Handles a ConstaNetGoodbye

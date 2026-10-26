@@ -308,7 +308,7 @@ func _set_session_name(p_name: String) -> bool:
 		return false
 	
 	_name = p_name
-	session_name_changed.emit(_name)
+	name_changed.emit(_name)
 	
 	return true
 

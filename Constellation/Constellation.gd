@@ -720,8 +720,11 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 		MessageType.DISCOVERY:
 			_handle_discovery_message(p_message, p_source)
 		
-		MessageType.SESSION_DISCOVERY:
-			_handle_session_discovery(p_message)
+		MessageType.SESSION_DISCOVERY when p_message.is_request():
+			_handle_session_discovery_request(p_message)
+		
+		MessageType.SESSION_DISCOVERY when p_message.is_acknowledgment() or p_message.is_announcement():
+			_handle_session_discovery_ack_announce(p_message)
 		
 		MessageType.SESSION_SET_PRIORITY:
 			_handle_session_set_priority(p_message)
@@ -765,37 +768,45 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 	_known_nodes[p_discovery.origin_id] = node
 
 
-## Handles a ConstaNetSessionDiscovery
-func _handle_session_discovery(p_session_discovery: ConstaNetSessionDiscovery) -> void:
-	if p_session_discovery.is_request():
-		if _local_node.is_sesion_master():
-			_send_session_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT, _local_node.get_session())
+## Handles a ConstaNetSessionDiscovery REQ message
+func _handle_session_discovery_request(p_session_discovery: ConstaNetSessionDiscovery) -> void:
+	var current_session: ConstellationSession = _local_node.get_session()
+	
+	if not current_session:
+		return 
+	
+	var is_first_node: bool = current_session.get_nodes()[0] == _local_node
+	
+	if _local_node.is_sesion_master() or (not current_session.has_session_master() and is_first_node):
+		_send_session_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT, _local_node.get_session())
+
+
+## Handles a ConstaNetSessionDiscovery ACK or ANNOUNCE message
+func _handle_session_discovery_ack_announce(p_session_discovery: ConstaNetSessionDiscovery) -> void:
+	if _known_sessions.has(p_session_discovery.session_id):
+		_known_sessions[p_session_discovery.session_id]._update_with(p_session_discovery)
+		return
+	
+	var session: ConstellationSession
+	
+	if _unknown_sessions.has(p_session_discovery.session_id):
+		session = _unknown_sessions[p_session_discovery.session_id]
+		session._mark_as_unknown(false)
+		session._update_with(p_session_discovery)
 		
-	elif p_session_discovery.is_acknowledgment() or p_session_discovery.is_announcement():
-		if _known_sessions.has(p_session_discovery.session_id):
-			_known_sessions[p_session_discovery.session_id]._update_with(p_session_discovery)
-			return
-		
-		var session: ConstellationSession
-		
-		if _unknown_sessions.has(p_session_discovery.session_id):
-			session = _unknown_sessions[p_session_discovery.session_id]
-			session._mark_as_unknown(false)
-			session._update_with(p_session_discovery)
-			
-			_unknown_sessions.erase(p_session_discovery.session_id)
-			_log("Previously unknown ConstellationSession: ", session.get_session_id(), " has been found on the network")
-		
-		else:
-			session = ConstellationSession.create_from_session_discovery(p_session_discovery)
-			add_child(session)
-			session_created.emit(session)
-		
-		_logv("New ConstellationSession: \"", session.get_uname(), "\" has been discovered on the network")
-		_known_sessions[session.get_session_id()] = session
-		
-		session.delete_requested.connect(_on_session_delete_request)
-		_attempt_session_auto_connect(session)
+		_unknown_sessions.erase(p_session_discovery.session_id)
+		_log("Previously unknown ConstellationSession: ", session.get_session_id(), " has been found on the network")
+	
+	else:
+		session = ConstellationSession.create_from_session_discovery(p_session_discovery)
+		add_child(session)
+		session_created.emit(session)
+	
+	_logv("New ConstellationSession: \"", session.get_uname(), "\" has been discovered on the network")
+	_known_sessions[session.get_session_id()] = session
+	
+	session.delete_requested.connect(_on_session_delete_request)
+	_attempt_session_auto_connect(session)
 
 
 ## Handles a ConstaNetSessionSetPriority

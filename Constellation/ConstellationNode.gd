@@ -480,7 +480,7 @@ func get_discovery_interval() -> int:
 
 
 ## Sends a message to set the name of this node on the network
-func set_node_name(p_name: String) -> void:
+func set_node_name(p_name: String) -> bool:
 	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new())
 	
 	set_attribute.attribute = ConstaNetSetAttribute.Attribute.NAME
@@ -488,10 +488,12 @@ func set_node_name(p_name: String) -> void:
 	
 	if is_local() and _set_node_name(p_name):
 		set_attribute.set_announcement(true)
-		_network._send_message_mcast(set_attribute)
-	else:
+		return not _network._send_message_mcast(set_attribute)
+	elif not is_local():
 		set_attribute.set_request(true)
-		send_message_udp(set_attribute)
+		return not send_message_udp(set_attribute)
+	else:
+		return false
 
 
 ## Sets the role flags

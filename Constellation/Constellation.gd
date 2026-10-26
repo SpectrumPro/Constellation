@@ -347,8 +347,12 @@ func set_ip_and_interface(p_ipaddr: IPAddr) -> bool:
 	if not p_ipaddr.is_valid():
 		return false
 	
+	if not p_ipaddr.get_type() == IP.Type.TYPE_IPV4:
+		_log_error("IPV6 Addresses are not supported")
+		return false 
+	
 	if _network_state != NetworkState.OFFLINE:
-		_log("IP and Interface can not be changed while node is not NetworkState.OFFLINE")
+		_log_error("IP and Interface can not be changed while node is not NetworkState.OFFLINE")
 		return false
 	
 	ConstellationConfig.bind_address = p_ipaddr.get_address()

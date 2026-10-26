@@ -154,7 +154,7 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	.display("ConstellationNode", 0).set_edit_condition(is_local).set_enum_dict(ConstaNetHeadder.RoleFlags)
 	
 	_settings.register_setting("BindAddress", Data.Type.IP, _network.set_ip_and_interface, _network.get_ip_and_interface, [_network.ip_and_interface_changed])\
-	.display("ConstellationNode", 1).set_display_condition(is_local)
+	.display("ConstellationNode", 1).set_display_condition(is_local).set_ip_type(IP.Type.TYPE_IPV4)
 	
 	_settings.register_status("IpAddress", Data.Type.STRING, get_node_ip, [node_ip_changed])\
 	.display("ConstellationNode", 2)

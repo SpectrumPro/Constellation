@@ -949,6 +949,9 @@ func _on_local_node_session_changed(p_session: ConstellationSession) -> void:
 ## Called when the discovery timer times out
 func _on_node_disco_timeout() -> void:
 	_send_discovery()
+	
+	if _local_node.is_sesion_master():
+		_send_session_discovery(ConstaNetHeadder.Flags.ACKNOWLEDGMENT, _local_node.get_session())
 
 
 ## Called when the session timer times out

@@ -24,6 +24,14 @@ const DISCONNECT_ACK_TIMEOUT: float = 2.0
 ## Mutiplyer in seconds for the discovery time to account for a dropped packet or other delay
 const DISCOVERY_INTERVAL_MARGIN: float = 2.5
 
+## Number of pings that should be made to make contact with the node when its connection is lost
+## If the node does not respond it's ConnectionState is changed to OFFLINE
+const RAPID_RECONNECT_ATTEMPTS: int = 10
+
+## Interval between sending rapid reconnect pings
+const RAPID_RECONNECT_INTERVAL: float = 1
+
+
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
 
@@ -81,11 +89,20 @@ var _last_heart_beat_at: float
 ## True when a heartbeat ACK message has been received since last refresh
 var _has_received_heartbeat_ack: bool = false
 
+## Number of rapid reconnect attempts that have been sent
+var _rapid_reconnect_attempts: int = 0
+
+## True if rapid reconnect is active
+var _rapid_reconnect_active: bool = false
+
 ## Timer to wait for a disconnect ACK message before forcing a disconnect
 var _disconnect_ack_timeout_timer: Timer = Timer.new()
 
 ## Timer to countdown between discovery messages to check for an offline node
 var _discovery_timeout_timer: Timer = Timer.new()
+
+## Used for wait time between sending rapid reconnect pings
+var _rapid_reconnect_timer: Timer = Timer.new()
 
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
@@ -171,7 +188,13 @@ func _ready() -> void:
 	_discovery_timeout_timer.set_wait_time(_discovery_interval)
 	_discovery_timeout_timer.timeout.connect(_on_discovery_timeout)
 	
+	_rapid_reconnect_timer.set_autostart(false)
+	_rapid_reconnect_timer.set_one_shot(false)
+	_rapid_reconnect_timer.set_wait_time(RAPID_RECONNECT_INTERVAL)
+	_rapid_reconnect_timer.timeout.connect(_on_rapid_interval_timeout)
+	
 	add_child(_disconnect_ack_timeout_timer)
+	add_child(_rapid_reconnect_timer)
 	
 	if not is_local():
 		add_child(_discovery_timeout_timer)
@@ -202,6 +225,9 @@ func connect_node() -> Error:
 	
 	if _tcp_socket.get_status() != StreamPeerTCP.Status.STATUS_NONE:
 		_tcp_socket.disconnect_from_host()
+	
+	if _rapid_reconnect_active:
+		_stop_rapid_reconnect()
 	
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	
@@ -553,6 +579,11 @@ func is_tcp_connected() -> bool:
 	return status == StreamPeerTCP.STATUS_CONNECTED
 
 
+## Returns true if rapid reconnect is active
+func is_rapid_reconnect_active() -> bool:
+	return _rapid_reconnect_active
+
+
 ## Closes this nodes local object
 func delete() -> void:
 	super.delete()
@@ -707,6 +738,28 @@ func _final_disconnect() -> void:
 	_network._logv("Successfully disconnected from: ", _name)
 
 
+## Beings the rapid reconnect process, ConnectionState must be LOST_CONNECTION to start
+func _start_rapid_reconnect() -> void:
+	if _connection_state != ConnectionState.LOST_CONNECTION:
+		return
+	
+	_network._log(
+		"Attempting rapid reconnect to \"", _name, "\" ",
+		RAPID_RECONNECT_ATTEMPTS, " pings with a ",
+		RAPID_RECONNECT_INTERVAL, " second interval"
+	)
+	
+	_rapid_reconnect_active = true
+	_rapid_reconnect_attempts = 0
+	_rapid_reconnect_timer.start(RAPID_RECONNECT_INTERVAL)
+
+
+## Stops the rapid reconnect process
+func _stop_rapid_reconnect() -> void:
+	_rapid_reconnect_timer.stop()
+	_rapid_reconnect_active = false
+
+
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
 func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
 	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
@@ -809,6 +862,11 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		_set_connection_status(ConnectionState.DISCOVERED)
 	
 	if is_in_discovered_state() and _connection_locks.size():
+		_network._logv(
+			"Auto-connecting to node: \"", _name, "\"",
+			"as it still has ", _connection_locks.size(), " connection lock(s) ",
+			"after receiving discovery message"
+		)
 		connect_node()
 
 
@@ -878,6 +936,10 @@ func _handle_heartbeat_ping(p_heart_beat: ConstaNetHeartBeat) -> void:
 		_ping = Time.get_unix_time_from_system() - _last_heart_beat_at
 		_has_received_heartbeat_ack = true
 		ping_changed.emit(snappedf(_ping, 0.001))
+		
+		if _connection_state == ConnectionState.LOST_CONNECTION and _rapid_reconnect_active:
+			_network._log(_name, " has responded to a rapid reconnect ping, reconnecting...")
+			connect_node()
 
 
 ## Handles a ConstaNetHeartBeat Mode.CONNECTION message
@@ -1010,7 +1072,7 @@ func _handle_tcp_status_error() -> void:
 			_set_connection_status(ConnectionState.CONNECTION_ERROR)
 		ConnectionState.CONNECTED:
 			_set_connection_status(ConnectionState.LOST_CONNECTION)
-			#TODO Handle connectio loss with auto reconnect
+			_start_rapid_reconnect()
 
 
 ## Runs a refresh step
@@ -1020,7 +1082,7 @@ func _refresh() -> void:
 	if not _has_received_heartbeat_ack:
 		_network._log("ConstellationNode: \"", get_node_name(), "\" has taken too long to respond")
 		_set_connection_status(ConnectionState.LOST_CONNECTION)
-		#TODO Handle connectio loss with auto reconnect
+		_start_rapid_reconnect()
 	
 	_has_received_heartbeat_ack = false
 	_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
@@ -1039,3 +1101,21 @@ func _on_discovery_timeout() -> void:
 		_network._log("Node: \"", get_node_name(), "\" has taken too long to respond ")
 		_set_connection_status(ConnectionState.OFFLINE)
 		_discovery_timeout_timer.stop()
+
+
+## Called when the rapid reconnect interval timer times out
+func _on_rapid_interval_timeout() -> void:
+	if _connection_state != ConnectionState.LOST_CONNECTION:
+		return
+	
+	if _rapid_reconnect_attempts >= RAPID_RECONNECT_ATTEMPTS:
+		_network._log(
+			"\"", _name, "\" failed to respond after ",
+			_rapid_reconnect_attempts, " attempts"
+		)
+		_set_connection_status(ConnectionState.OFFLINE)
+		_stop_rapid_reconnect()
+	
+	else:
+		_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
+		_rapid_reconnect_attempts += 1

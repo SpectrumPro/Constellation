@@ -229,6 +229,7 @@ func connect_node() -> Error:
 	if _rapid_reconnect_active:
 		_stop_rapid_reconnect()
 	
+	_set_connection_status(ConnectionState.CONNECTING)
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	
 	_network._logv(
@@ -240,7 +241,6 @@ func connect_node() -> Error:
 	if err_code:
 		_set_connection_status(ConnectionState.CONNECTION_ERROR)
 	else:
-		_set_connection_status(ConnectionState.CONNECTING)
 		_tcp_socket.set_no_delay(true)
 	
 	return err_code
@@ -858,7 +858,7 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	
 	_update_from_discovery(p_discovery)
 	
-	if is_in_offline_state():
+	if is_in_offline_state() or is_in_error_state():
 		_set_connection_status(ConnectionState.DISCOVERED)
 	
 	if is_in_discovered_state() and _connection_locks.size():
@@ -916,6 +916,8 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 
 ## Handles a ConstaNetHeartBeat
 func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP = null) -> void:
+	_use_stream(p_source)
+	
 	match p_heart_beat.mode:
 		ConstaNetHeartBeat.Mode.HEARTBEAT:
 			_handle_heartbeat_ping(p_heart_beat)
@@ -944,15 +946,15 @@ func _handle_heartbeat_ping(p_heart_beat: ConstaNetHeartBeat) -> void:
 
 ## Handles a ConstaNetHeartBeat Mode.CONNECTION message
 func _handle_heartbeat_connection(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP) -> void:
-	match _connection_state:
-		ConnectionState.AWAITING_CONNECTION_ACK when p_heart_beat.is_acknowledgment() and p_heart_beat.is_allowed():
-			_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-			_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
+	if \
+		_connection_state == ConnectionState.AWAITING_CONNECTION_ACK \
+		and p_heart_beat.is_acknowledgment() and p_heart_beat.is_allowed() \
+	:
+		_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+		_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
 		
-		_ when _connection_state not in [ConnectionState.OFFLINE, ConnectionState.UNKNOWN] \
-		and p_heart_beat.is_request() and is_instance_valid(p_source):
-			_use_stream(p_source)
-			_final_connect()
+	elif not is_in_offline_state() and p_heart_beat.is_request() and is_instance_valid(p_source):
+		_final_connect()
 
 
 ## Handles a ConstaNetHeartBeat Mode.DISCONNECTION message
@@ -1041,8 +1043,9 @@ func _use_stream(p_stream: StreamPeerTCP) -> void:
 	if _tcp_socket == p_stream or is_local():
 		return
 	
-	_network._logv("Changing StreamPeerTCP object for ConstellationNode: \"", get_uname(), "\"")
+	_network._logv("Changing StreamPeerTCP object for: \"", _name, "\"")
 	
+	_network._remove_peer_from_process(_tcp_socket)
 	_tcp_socket.disconnect_from_host()
 	_tcp_socket = p_stream
 
@@ -1071,6 +1074,7 @@ func _handle_tcp_status_error() -> void:
 		ConnectionState.CONNECTING:
 			_set_connection_status(ConnectionState.CONNECTION_ERROR)
 		ConnectionState.CONNECTED:
+			_network._log("TCP Connection error to node: \"", _name, "\"")
 			_set_connection_status(ConnectionState.LOST_CONNECTION)
 			_start_rapid_reconnect()
 

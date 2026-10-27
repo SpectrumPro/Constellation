@@ -861,13 +861,22 @@ func _process_stream_peer(p_peer: StreamPeerTCP) -> void:
 	p_peer.poll()
 	
 	if p_peer.get_status() != StreamPeerTCP.Status.STATUS_CONNECTED:
-		_logv("Disconnecting TCP Peer from: ", p_peer.get_connected_host(), ":", p_peer.get_connected_port())
-		_connected_tcp_peers.erase(p_peer)
-		_tcp_buffers.erase(p_peer)
+		_logv(
+			"StreamPeerTCP processed by: NetworkHandler from: ", 
+			p_peer.get_connected_host(), ":", p_peer.get_connected_port(),
+			" has lost connection, removing from process list"
+		)
+		_remove_peer_from_process(p_peer)
 	
 	else:
 		while p_peer.get_available_bytes() > 0:
 			_handle_packet_frame(p_peer)
+
+
+## Removes the given stream peer from the process list
+func _remove_peer_from_process(p_peer: StreamPeerTCP) -> void:
+	_connected_tcp_peers.erase(p_peer)
+	_tcp_buffers.erase(p_peer)
 
 
 ## Processes a IncommingMultiPart

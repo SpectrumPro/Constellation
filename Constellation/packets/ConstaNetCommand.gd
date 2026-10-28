@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetCommand extends ConstaNetHeadder
-## ConstaNET Command packet
+## ConstaNET Command packet, used to send a command message to one or more nodes in a session
 
 
 ## Byte length for in_session
@@ -55,7 +55,7 @@ var command: Variant
 var in_session: String
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.COMMAND
 

@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetDiscovery extends ConstaNetHeadder
-## ConstaNET Discovery packet
+## ConstaNET Discovery packet, used for discovery requests / acknowledgements between nodes
 
 
 ## Byte length for the node IP address
@@ -75,7 +75,7 @@ const MESAGE_LENGTH_NO_NAME: int = O_NODE_NAME
 ## The IP address of the origin node
 var node_ip: String = ""
 
-## The NetworkRole of this node
+## The RoleFlags of this node
 var role_flags: int = RoleFlags.EXECUTOR
 
 ## The TCP port used by this node
@@ -84,14 +84,14 @@ var tcp_port: int = 0
 ## The UDP port used by this node
 var udp_port: int = 0
 
-## The time in seconds this node will send discovery messages
+## The interval time in seconds this node will send discovery messages
 var disco_time: int = 0
 
-## The name of the origin node
+## The name of this node
 var node_name: String = "UnNamedNode"
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.DISCOVERY
 

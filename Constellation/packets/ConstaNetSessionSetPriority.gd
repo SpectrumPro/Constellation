@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetSessionSetPriority extends ConstaNetHeadder
-## ConstaNET Session Set Priority message
+## ConstaNET Session Set Priority message, used to set the priority index of a node in a session
 
 
 ## Byte length for the session ID
@@ -49,7 +49,7 @@ var node_id: String
 var position: int = -1
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.SESSION_SET_PRIORITY
 

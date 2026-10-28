@@ -2,7 +2,17 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetSetAttribute extends ConstaNetHeadder
-## ConstaNET Set Arrtibute packet
+## ConstaNET Set Attribute packet, used to set an attribute of a node
+
+
+## Attribute Enum
+enum Attribute {
+	UNKNOWN,		## Default State
+	NAME,			## Sets the name of a node
+	IP_ADDR,		## Sets the IpAddress of a node
+	ROLE_FLAGS,		## Sets the RoleFlags of a node
+	SESSION,		## Sets the session of a node
+} 
 
 
 ## Byte length for attribute
@@ -34,16 +44,6 @@ const A_VALUE: String = "value"
 
 ## Message size, excluding the value
 const MESSAGE_SIZE: int = O_VALUE
-
-
-## Attribute Enum
-enum Attribute {
-	UNKNOWN,		## Default State
-	NAME,			## Sets the name of a device
-	IP_ADDR,		## Sets the Ip Address of a supported device
-	ROLE_FLAGS,		## Sets the RoleFlags of the node
-	SESSION,		## Tells the device to join the given session
-}
 
 
 ## Type of attribute
@@ -112,7 +112,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	value = p_value
 
 
-## Checks if this ConstaNetDiscovery is valid
+## Checks if this ConstaNetSetAttribute is valid
 func _is_valid() -> bool:
 	if attribute:
 		return true

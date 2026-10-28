@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetSessionDiscovery extends ConstaNetHeadder
-## ConstaNET Session Discovery message
+## ConstaNET Session Discovery message, used for session discovery requests / acknowledgements between nodes
 
 
 ## Byte length for the session ID
@@ -73,7 +73,7 @@ var session_name: String
 var nodes: Dictionary[String, int]
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.SESSION_DISCOVERY
 

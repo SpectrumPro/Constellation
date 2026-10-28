@@ -2,14 +2,14 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetSessionSetAttribute extends ConstaNetHeadder
-## ConstaNET Session Set Arrtibute packet
+## ConstaNET Session Set Arrtibute packet, used to set an attribute of a session
 
 
 ## Attribute Enum
 enum Attribute {
 	UNKNOWN,		## Default State
-	NAME,			## Sets the name of a device
-	MASTER,			## Sets the Ip Address of a supported device
+	NAME,			## Sets the name of a sesison
+	MASTER,			## Sets the session master of a session
 }
 
 
@@ -63,7 +63,7 @@ var attribute: Attribute
 var value: String = ""
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.SESSION_SET_ATTRIBUTE
 

@@ -35,7 +35,7 @@ const RAPID_RECONNECT_INTERVAL: float = 1
 const MAX_HEARTBEAT_SEQUENCE: int = 0xFFFFFF
 
 ## Lowest sequence number for heartbeat messages, 
-## sequence 0 disqualify the message from being used for ping detection
+## sequence == 0 will disqualify the message from being used for ping detection
 const MIN_HEARTBEAT_SEQUENCE: int = 1
 
 ## Interval in seconds to send heartbeat pings 
@@ -45,17 +45,7 @@ const HEARTBEAT_PING_INTERVAL: int = 1
 const HEARTBEAT_TIMEOUT_MS: int = 2000
 
 
-## MessageType
-const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
-
-## Flags
-const Flags: ConstaNetHeadder.Flags = ConstaNetHeadder.Flags
-
-## NetworkRole
-const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
-
-
-## Enum for TransportModes
+## Enum for TransportMode
 enum TransportMode {
 	TCP,			## Use TCP for sending data
 	UDP,			## Use UDP for sending data
@@ -66,34 +56,34 @@ enum TransportMode {
 ## The Constellation NetworkHandler
 static var _network: Constellation = null
 
-## Current Network role
-var _role_flags: int = RoleFlags.EXECUTOR
+## The RoleFlags of this node
+var _role_flags: int = ConstaNetHeadder.RoleFlags.EXECUTOR
 
-## The NodeID of the remote node
+## The NodeID of this node
 var _node_id: String = UUID.v4()
 
-## The IP address of the remote node
+## The IP address of this node
 var _node_ip: String = ""
 
-## The TCP port that the node is using
+## The TCP port of this node
 var _node_tcp_port: int = 0
 
-## The UDP port that the node is using
+## The UDP port of this node
 var _node_udp_port: int = 0
 
-## UDP peer to send data to this node
+## UDPSocket used to send data to this node
 var _udp_socket: PacketPeerUDP = PacketPeerUDP.new()
 
-## TCP peer to connect to the node
+## StreamPeerTCP used to send and recieve data from this node
 var _tcp_socket: StreamPeerTCP = StreamPeerTCP.new()
 
 ## The discovery interval of this node in seconds
 var _discovery_interval: int = 1
 
-## Previous TCP Peer status
+## Previous value of StreamPeerTCP.get_status()
 var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 
-## Stores all connection locks in a Set
+## Used to keep this node connected while other scripts depend on the connection
 var _connection_locks: Set = Set.new()
 
 ## Time when each heartbeat message was sent { sequence: Time.get_ticks_msec() }
@@ -147,7 +137,7 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 	return node
 
 
-## Creates a new ConstellationNode in LocalNode mode
+## Creates a new ConstellationNode in local node mode
 static func create_local_node() -> ConstellationNode:
 	var node: ConstellationNode = ConstellationNode.new()
 	
@@ -225,7 +215,7 @@ func _ready() -> void:
 		add_child(_discovery_timeout_timer)
 
 
-## Called each frame
+## process
 func _process(delta: float) -> void:
 	if is_instance_valid(_tcp_socket):
 		_process_tcp_socket()
@@ -234,7 +224,7 @@ func _process(delta: float) -> void:
 		_process_awaiting_heartbeats()
 
 
-## Connectes TCP to this node
+## Attempts to start a connection with this node by sending a connection request
 func connect_node() -> Error:
 	if is_local():
 		return ERR_UNAVAILABLE
@@ -311,7 +301,7 @@ func connect_node_and_add_lock(p_key: Variant) -> void:
 	
 	_connection_locks.add(p_key)
 	
-	if not is_tcp_connected():
+	if not is_node_connected():
 		connect_node()
 
 
@@ -361,7 +351,10 @@ func send_message_udp(p_message: ConstaNetHeadder) -> Error:
 			") Sending as multipart"
 		)
 		
-		var multi_part: ConstaNetMultiPart = _auto_fill_headder(ConstaNetMultiPart.new(), Flags.NONE)
+		var multi_part: ConstaNetMultiPart = _auto_fill_headder(
+			ConstaNetMultiPart.new(), 
+			ConstaNetHeadder.Flags.NONE
+		)
 		var offset: int = 0
 		var chunk_id: int = 0
 		
@@ -398,7 +391,8 @@ func send_message_tcp(p_message: ConstaNetHeadder) -> Error:
 	return ERR_CONNECTION_ERROR
 
 
-## Joines the given session. If not self.is_local() a SetAttribute Attribute.SESSION message will be sent
+## Joines the given session. 
+## if not self.is_local() a SetAttribute Attribute.SESSION message will be sent
 func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if not p_session or p_session == _session:
 		return false
@@ -478,37 +472,48 @@ func leave_session() -> bool:
 	return true
 
 
-## Gets the network role
+## Returns the RoleFlags of this node
 func get_role_flags() -> int:
 	return _role_flags
 
 
-## Gets the connection state
+## Returns the ConnectionState of this node
 func get_connection_state() -> ConnectionState:
 	return _connection_state
 
 
-## Gets the human readable connection state
+## Returns a human readable version of the ConnectionState, eg: "CONNECTED"
 func get_connection_state_human() -> String:
 	return ConnectionState.keys()[_connection_state].capitalize()
 
 
-## Gets the NodeFlags
+## Returns the NodeFlags for this node
 func get_node_flags() -> int:
 	return _node_flags
 
 
-## Gets the Node's NodeID
+## Returns the NodeID for this node
 func get_node_id() -> String:
 	return _node_id
 
 
-## Gets the Node's IP Address
+## Returns the IP address for this node
 func get_node_ip() -> String:
 	return _node_ip
 
 
-## Gets the current session ID, or ""
+## Returns the TCP port this node is using
+func get_tcp_port() -> int:
+	return _node_tcp_port
+
+
+## Returns the UDP port this node is using
+func get_udp_port() -> int:
+	return _node_udp_port
+
+
+## Returns the ID of the session this node is in, 
+## returns "" if this node is not a member of any session
 func get_session_id() -> String:
 	if _session:
 		return _session.get_session_id()
@@ -526,7 +531,8 @@ func get_discovery_interval() -> int:
 	return _discovery_interval
 
 
-## Sends a message to set the name of this node on the network
+## Sets the name of this node
+## if not self.is_local() a ConstaNetSetAttribute message will be sent to the remote node
 func set_node_name(p_name: String) -> bool:
 	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new())
 	
@@ -543,7 +549,8 @@ func set_node_name(p_name: String) -> bool:
 		return false
 
 
-## Sets the role flags
+## Sets the RoleFlags of this node
+## if not self.is_local() a ConstaNetSetAttribute message will be sent to the remote node
 func set_role_flags(p_role_flags: int) -> bool:
 	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new())
 	
@@ -575,14 +582,14 @@ func is_unknown() -> bool:
 	return _node_flags & NodeFlags.UNKNOWN
 
 
-## Returns true if this RoleFlag includes the EXECUTOR role
+## Returns true if this node had the EXECUTOR RoleFlag
 func is_executor() -> bool:
-	return (_role_flags & RoleFlags.EXECUTOR) != 0
+	return (_role_flags & ConstaNetHeadder.RoleFlags.EXECUTOR) != 0
 
 
-## Returns true if this RoleFlag includes the CONTROLLER role
+## Returns true if this node had the CONTROLLER RoleFlag
 func is_controller() -> bool:
-	return (_role_flags & RoleFlags.CONTROLLER) != 0
+	return (_role_flags & ConstaNetHeadder.RoleFlags.CONTROLLER) != 0
 
 
 ## Returns true if this node is the master of its session
@@ -616,7 +623,7 @@ func delete() -> void:
 	_connection_state = ConnectionState.UNKNOWN
 
 
-## Sets the network role
+## Sets the RoleFlags
 func _set_role_flags(p_role_flags: int) -> bool:
 	if p_role_flags == _role_flags:
 		return false
@@ -627,7 +634,7 @@ func _set_role_flags(p_role_flags: int) -> bool:
 	return true
 
 
-## Sets the connection status
+## Sets the ConnectionState
 func _set_connection_status(p_status: ConnectionState) -> bool:
 	if _connection_state == p_status:
 		return false
@@ -691,7 +698,7 @@ func _set_session(p_session: ConstellationSession, p_auto_priority: bool = true,
 		return _leave_session()
 
 
-## Internal handler for joining a session
+## Handles this node joining a session
 func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if _session:
 		_leave_session()
@@ -710,7 +717,7 @@ func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true
 	return true
 
 
-## Internal handler for leaving a session
+## Handles this node leaving a session
 func _leave_session() -> bool:
 	if not _session:
 		return false
@@ -826,7 +833,10 @@ func _stop_heartbeat_ping() -> void:
 
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
 func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
-	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.REQUEST)
+	var message: ConstaNetDiscovery = _auto_fill_headder(
+		_network._create_discovery(), 
+		ConstaNetHeadder.Flags.REQUEST
+	)
 	var errcode: Error = send_message(message, p_transport_mode)
 	
 	_network._logv(
@@ -839,7 +849,10 @@ func _send_discovery_request(p_transport_mode: TransportMode = TransportMode.AUT
 
 ## Sends a Discovery Flags.ACKNOWLEDGMENT to the remote node over TCP
 func _send_discovery_acknowledment(p_transport_mode: TransportMode = TransportMode.AUTO) -> void:
-	var message: ConstaNetDiscovery = _auto_fill_headder(_network._create_discovery(), Flags.ACKNOWLEDGMENT)
+	var message: ConstaNetDiscovery = _auto_fill_headder(
+		_network._create_discovery(), 
+		ConstaNetHeadder.Flags.ACKNOWLEDGMENT
+	)
 	var errcode: Error = send_message(message, p_transport_mode)
 	
 	_network._logv(
@@ -889,7 +902,11 @@ func _send_heartbeat_ping() -> void:
 
 
 ## Sends a SetAttribute message to the remote node
-func _send_set_attribute(p_flags: ConstaNetCommand.Flags, p_attribute: ConstaNetSetAttribute.Attribute, p_value: Variant) -> bool:
+func _send_set_attribute(
+	p_flags: ConstaNetCommand.Flags, 
+	p_attribute: ConstaNetSetAttribute.Attribute, 
+	p_value: Variant
+) -> bool:
 	var set_attribute: ConstaNetSetAttribute = _auto_fill_headder(ConstaNetSetAttribute.new(), p_flags)
 	
 	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
@@ -907,26 +924,26 @@ func _send_set_attribute(p_flags: ConstaNetCommand.Flags, p_attribute: ConstaNet
 	return not bool(errcode)
 
 
-## Handles a ConstaNetHeadder
+## Handles an incomming message
 func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null) -> void:
 	match p_message.type:
-		MessageType.DISCOVERY:
+		ConstaNetHeadder.Type.DISCOVERY:
 			_handle_discovery(p_message)
 		
-		MessageType.GOODBYE when not is_local():
+		ConstaNetHeadder.Type.GOODBYE when not is_local():
 			_handle_goodbye(p_message)
 		
-		MessageType.SET_ATTRIBUTE:
+		ConstaNetHeadder.Type.SET_ATTRIBUTE:
 			_handle_set_attribute(p_message)
 		
-		MessageType.HEARTBEAT when not is_local():
+		ConstaNetHeadder.Type.HEARTBEAT when not is_local():
 			_handle_heartbeat(p_message, p_source)
 		
-		MessageType.COMMAND when is_local():
+		ConstaNetHeadder.Type.COMMAND when is_local():
 			_handle_command(p_message)
 
 
-## Handles a ConstaNetDiscovery
+## Handles a ConstaNetDiscovery message
 func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	if is_local():
 		if p_discovery.is_request():
@@ -951,7 +968,7 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		connect_node()
 
 
-## Handles a ConstaNetGoodbye
+## Handles a ConstaNetGoodbye message
 func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	disconnect_node(false, true)
 	_leave_session()
@@ -959,7 +976,7 @@ func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	_set_connection_status(ConnectionState.OFFLINE)
 
 
-## Handles a ConstaNetSetAttribute
+## Handles a ConstaNetSetAttribute message
 func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 	match p_set_attribute.attribute:
 		ConstaNetSetAttribute.Attribute.NAME:
@@ -986,7 +1003,7 @@ func _handle_set_attribute(p_set_attribute: ConstaNetSetAttribute) -> void:
 				_set_session(session)
 
 
-## Handles a ConstaNetHeartBeat
+## Handles a ConstaNetHeartBeat message
 func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP = null) -> void:
 	_use_stream(p_source)
 	
@@ -1065,7 +1082,7 @@ func _handle_heartbeat_disconnection(p_heart_beat: ConstaNetHeartBeat) -> void:
 				_set_connection_status(ConnectionState.CONNECTED)
 
 
-## Handles a ConstaNetCommand
+## Handles a ConstaNetCommand message
 func _handle_command(p_command: ConstaNetCommand) -> void:
 	if p_command.in_session and p_command.in_session != get_session_id():
 		return
@@ -1155,7 +1172,10 @@ func _process_missed_heartbeat_ping(p_sequence: int) -> void:
 
 
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
-func _auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int = Flags.NONE) -> ConstaNetHeadder:
+func _auto_fill_headder(
+	p_headder: ConstaNetHeadder, 
+	p_flags: int = ConstaNetHeadder.Flags.NONE
+) -> ConstaNetHeadder:
 	p_headder.origin_id = _network.get_node_id()
 	p_headder.flags |= p_flags
 	

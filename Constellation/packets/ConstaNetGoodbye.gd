@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetGoodbye extends ConstaNetHeadder
-## ConstaNET Goodbye packet
+## ConstaNET Goodbye packet, used to inform the network when a node is going offline
 
 
 ## Byte length for the length of reason string
@@ -31,7 +31,7 @@ const MESSAGE_LENGTH_NO_REASON: int = O_REASON_STRING
 var reason: String = "Unknown"
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.GOODBYE
 

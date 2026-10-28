@@ -2,30 +2,26 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetHeadder extends RefCounted
-## Base ConstsNetHeadder class for ConstaNET headders
+## Represents the headder for all ConstaNet messages
 
 
-## Type Enum
+## Enum for Type
 enum Type {
-	UNKNOWN, 				# Init base state
+	UNKNOWN, 				# Default
+	DISCOVERY,				# REQ / ACK to discover nodes
+	GOODBYE,				# Announces a node going offline
 	
-	DISCOVERY,				# Client/server broadcasts "Who’s there?"
-	GOODBYE,				# Node going offline
-	COMMAND,				# Lighting cue or control command
-	MULTI_PART,				# Multipart messsage
+	COMMAND,				# Command for one or more nodes in a session
+	MULTI_PART,				# Message containing chunks of a larger message
+	SET_ATTRIBUTE,			# Sets an attribute on a node
+	HEARTBEAT,				# Used to init, de-init, and sustain connections
 	
-	SET_ATTRIBUTE,			# Sets an attribute on a node, name, ipaddress, ect..
-	STATE_REQUEST,			# Request full state sync
-	HEARTBEAT,				# Periodic alive signal
-	
-	SESSION_DISCOVERY,		# Announcement / discovery request for a session
-	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session, name, master, ect..
-	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
-	
-	SYS_EXCLUSIVE			# Device/vendor specific or extended data
+	SESSION_DISCOVERY,		# REQ / ACK to discover session
+	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session
+	SESSION_SET_PRIORITY,	# Sets the proirity of a node in a session
 }
 
-## Flags Enum (bitmask-compatible)
+## Enum for Flags
 enum Flags {
 	NONE				= 0,		# Default state
 	REQUEST				= 1 << 0,	# This message is requesting a responce
@@ -36,11 +32,11 @@ enum Flags {
 	ALLOWED				= 1 << 5,	# This action has been allowed by the sender, used with ACKNOWLEDGMENT
 }
 
-## Enum for network roles
+## Enum for RoleFlags
 enum RoleFlags {
 	NONE				= 0,
-	EXECUTOR			= 1 << 0,	# Performs the actions defined by the Controller
-	CONTROLLER			= 1 << 1,	# # Sends control and command messages to the Executer 
+	EXECUTOR			= 1 << 0,	# Defines a node that has the ability to process data
+	CONTROLLER			= 1 << 1,	# Defines a node that can only send controls executors
 }
 
 ## Number of bytes used to store each data type
@@ -68,12 +64,11 @@ enum TypeLength {
 ## Matches the Type enum to a class
 static var ClassTypes: Dictionary[int, Script] = {
 	Type.UNKNOWN: 				ConstaNetHeadder,
-	
 	Type.DISCOVERY: 			ConstaNetDiscovery,
 	Type.GOODBYE: 				ConstaNetGoodbye,
+	
 	Type.COMMAND: 				ConstaNetCommand,
 	Type.MULTI_PART: 			ConstaNetMultiPart,
-	
 	Type.SET_ATTRIBUTE: 		ConstaNetSetAttribute,
 	Type.HEARTBEAT:				ConstaNetHeartBeat,
 	
@@ -206,8 +201,7 @@ func get_target_as_buffer() -> PackedByteArray:
 	return get_id_as_buffer(target_id)
 
 
-## Returns the flags of this header as a human readable string
-## eg Flag1+Flag2
+## Returns the flags of this header as a human readable string, eg "Flag1+Flag2"
 func get_flags_human() -> String:
 	return Utils.flags_to_string(flags, Flags)
 
@@ -220,7 +214,7 @@ func is_valid() -> bool:
 	return _is_valid()
 
 
-## Sets this ConstaNet message's Request flag
+## Sets the REQUEST flag
 func set_request(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.REQUEST
@@ -228,7 +222,7 @@ func set_request(p_state: bool) -> void:
 		flags &= ~Flags.REQUEST
 
 
-## Sets this ConstaNet message's Acknowledgment flag
+## Sets the ACKNOWLEDGMENT flag
 func set_acknowledgment(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ACKNOWLEDGMENT
@@ -236,7 +230,7 @@ func set_acknowledgment(p_state: bool) -> void:
 		flags &= ~Flags.ACKNOWLEDGMENT
 
 
-## Sets this ConstaNet message's Error flag
+## Sets the ERROR flag
 func set_error(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ERROR
@@ -244,7 +238,7 @@ func set_error(p_state: bool) -> void:
 		flags &= ~Flags.ERROR
 
 
-## Sets this ConstaNet message's Announcement flag
+## Sets the ANNOUNCEMENT flag
 func set_announcement(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ANNOUNCEMENT
@@ -252,7 +246,7 @@ func set_announcement(p_state: bool) -> void:
 		flags &= ~Flags.ANNOUNCEMENT
 
 
-## Sets this ConstaNet message's Denied flag
+## Sets the DENIED flag
 func set_denied(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.DENIED
@@ -260,7 +254,7 @@ func set_denied(p_state: bool) -> void:
 		flags &= ~Flags.DENIED
 
 
-## Sets this ConstaNet message's Allowed flag
+## Sets the ALLOWED flag
 func set_allowed(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ALLOWED
@@ -268,32 +262,32 @@ func set_allowed(p_state: bool) -> void:
 		flags &= ~Flags.ALLOWED
 
 
-## Returns true if the Request flag is set
+## Returns true if the REQUEST flag is set
 func is_request() -> bool:
 	return (flags & Flags.REQUEST) != 0
 
 
-## Returns true if the Acknowledgment flag is set
+## Returns true if the ACKNOWLEDGMENT flag is set
 func is_acknowledgment() -> bool:
 	return (flags & Flags.ACKNOWLEDGMENT) != 0
 
 
-## Returns true if the Error flag is set
+## Returns true if the ERROR flag is set
 func is_error() -> bool:
 	return (flags & Flags.ERROR) != 0
 
 
-## Returns true if the Announcement flag is set
+## Returns true if the ANNOUNCEMENT flag is set
 func is_announcement() -> bool:
 	return (flags & Flags.ANNOUNCEMENT) != 0
 
 
-## Returns true if the Denied flag is set
+## Returns true if the DENIED flag is set
 func is_denied() -> bool:
 	return (flags & Flags.DENIED) != 0
 
 
-## Returns true if the Announcement flag is set
+## Returns true if the ALLOWED flag is set
 func is_allowed() -> bool:
 	return (flags & Flags.ALLOWED) != 0
 
@@ -448,12 +442,12 @@ func _get_as_packet() -> PackedByteArray:
 	return []
 
 
-## Override this function to provide a method to parses a Dictionary
+## Override this function to provide a method to parse a Dictionary
 func _parse_dict(p_dict: Dictionary) -> void:
 	pass
 
 
-## Override this function to provide a method to parses a Dictionary
+## Override this function to provide a method to parse a Dictionary
 func _parse_packet(p_packet: PackedByteArray) -> void:
 	pass
 

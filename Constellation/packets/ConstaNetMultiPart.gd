@@ -2,7 +2,7 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetMultiPart extends ConstaNetHeadder
-## ConstaNET MultiPart packet
+## ConstaNET MultiPart packet, used to transfer a large message over the network
 
 
 ## Byte length for multi_part_id
@@ -67,12 +67,12 @@ var chunk_id: int = 0
 var data: PackedByteArray
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.MULTI_PART
 
 
-## Gets this ConstaNetCommand as a PackedByteArray
+## Gets this ConstaNetMultiPart as a PackedByteArray
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
 		A_PART_ID: multi_part_id,
@@ -139,7 +139,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	data = p_data_block
 
 
-## Checks if this ConstaNetCommand is valid
+## Checks if this ConstaNetMultiPart is valid
 func _is_valid() -> bool:
 	if multi_part_id and num_of_chunks:
 		return true

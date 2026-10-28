@@ -223,7 +223,7 @@ func set_session_name(p_name: String) -> bool:
 	return true
 
 
-## Gets all nodes in this session
+## Returns a list of all nodes in this session
 func get_nodes() -> Array[NetworkNode]:
 	var return_value: Array[NetworkNode]
 	return_value.assign(_nodes)
@@ -231,12 +231,12 @@ func get_nodes() -> Array[NetworkNode]:
 	return return_value
 
 
-## Shorthand to get the number of nodes in this session
+## Returns the number of nodes in this session
 func get_number_of_nodes() -> int:
 	return len(_nodes)
 
 
-## Gets the SessionID
+## Returns the SessionID
 func get_session_id() -> String:
 	return _session_id
 
@@ -254,12 +254,12 @@ func get_priority_order() -> Dictionary[int, NetworkNode]:
 	return return_value
 
 
-## Returns the priority order
+## Returns the priority of a given node, or -1
 func get_priority_of(p_node: NetworkNode) -> int:
 	return _node_priorities.right(p_node, -1)
 
 
-## Gets the session flags
+## Returns the session flags
 func get_session_flags() -> int:
 	return _session_flags
 
@@ -280,8 +280,6 @@ func has_node_in_session(p_node: ConstellationNode) -> bool:
 
 
 ## Returns true if the given node is eligible to be a session master
-## If p_is_new == true, the node is treated as just joining the session. 
-## Thus allowing master asignment even if the node is not connected yet
 func can_be_session_master(p_node: ConstellationNode) -> bool:
 	if not _node_priorities.has_right(p_node):
 		return false
@@ -317,7 +315,7 @@ func _set_session_id(p_session_id: String) -> bool:
 	return true
 
 
-## Sets the session master node
+## Sets the session master
 func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if p_session_master == _session_master:
 		return false
@@ -343,7 +341,7 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	return true
 
 
-## Sets the name of this session
+## Sets the session name
 func _set_session_name(p_name: String) -> bool:
 	if p_name == _name:
 		return false
@@ -355,7 +353,7 @@ func _set_session_name(p_name: String) -> bool:
 
 
 ## Sets the priority index of a node.
-##Ppass -1 to remove the node from the priority order, returns the new priority
+## pass -1 to remove the node from the priority order, returns the new priority index
 func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 	if not p_node.is_executor() and p_position >= 0:
 		_network._logv("_set_node_priority: can't asign a priority to a none RoleFlags.EXECUTER node")
@@ -396,7 +394,7 @@ func _set_node_priority(p_node: ConstellationNode, p_position: int) -> int:
 	return requested_position
 
 
-## Checks and shifts the given element
+## Recursively shifts the priority order down an index
 func _shift_order(p_current_index: int) -> void:
 	if _node_priorities.left(p_current_index):
 		_shift_order(p_current_index + 1)

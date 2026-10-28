@@ -2,14 +2,14 @@
 # This file is part of the Constellation Network Engine, licensed under the GPL v3.
 
 class_name ConstaNetHeartBeat extends ConstaNetHeadder
-## ConstaNET HeartBeat packet
+## ConstaNET HeartBeat packet, used to init, de-init, or sustain a connection between nodes
 
 
-## Attribute Enum
+## Enum for Enum
 enum Mode {
 	UNKNOWN,		## Default State
 	HEARTBEAT,		## Used as a ping 
-	CONNECTION,		## Used to init a connection between nodes
+	CONNECTION,		## Used to aggree if two nodes can connect
 	DISCONNECTION,	## Used to aggree if two notes can disconnect
 }
 
@@ -42,7 +42,7 @@ const MESSAGE_LENGTH: int = O_SEQUENCE + L_SEQUENCE
 ## Type of attribute
 var mode: Mode = Mode.UNKNOWN
 
-## Sequence number
+## Sequence number, used for Mode.HEARTBEAT messages
 var sequence: int = 0
 
 
@@ -51,7 +51,7 @@ func _init() -> void:
 	type = Type.HEARTBEAT
 
 
-## Gets this ConstaNetSetAttribute as a Dictionary
+## Gets this ConstaNetHeartBeat as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
 		A_MODE: mode,
@@ -59,7 +59,7 @@ func _get_as_dict() -> Dictionary[String, Variant]:
 	}
 
 
-## Gets this ConstaNetSetAttribute as a PackedByteArray
+## Gets this ConstaNetHeartBeat as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
 	result.resize(MESSAGE_LENGTH)
@@ -92,7 +92,7 @@ func _parse_packet(p_packet: PackedByteArray) -> void:
 	sequence = p_sequence
 
 
-## Checks if this ConstaNetDiscovery is valid
+## Checks if this ConstaNetHeartBeat is valid
 func _is_valid() -> bool:
 	if mode != Mode.UNKNOWN:
 		return true

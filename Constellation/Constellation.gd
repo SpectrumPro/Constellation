@@ -31,26 +31,23 @@ const LINK_CHECK_INTERVAL: float = 5
 const LINK_CHECK_ERROR_INTERVAL: float = 0.5
 
 ## Time in seconds to delay the node restart after network link is back up
+## Allows time for the system to re-asign IP addressd and firewall rules
 const LINK_CHECK_RESTART_DELAY: float = 2
 
 ## Max time to wait in second for the next chunk of a multipart message to be recieved
+## If the next chunk is not recieved within this time, the whole buffer will be discarded
 const MULTI_PART_MAX_WAIT: int = 10
 
 
-## MessageType
-const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
-
-## NetworkRole
-const RoleFlags: ConstaNetHeadder.RoleFlags = ConstaNetHeadder.RoleFlags
 
 ## ConstaNetGoodbye reason for going offline
 const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
 
 
-## The primary TCP server to use
+## TCPServer to handle incomming connection from other nodes
 var _tcp_socket: TCPServer = TCPServer.new()
 
-## The primary UDP server to use
+## UDP server to handle incomming UDP messages from other nodes
 var _udp_socket: PacketPeerUDP = PacketPeerUDP.new()
 
 ## The current TCP port
@@ -75,10 +72,16 @@ var _tcp_buffers: Dictionary[StreamPeerTCP, PackedByteArray]
 var _ip_link_up: bool = false
 
 ## Network Role
-var _role_flags: int = RoleFlags.EXECUTOR
+var _role_flags: int = ConstaNetHeadder.RoleFlags.EXECUTOR
 
 ## The ConstellationNode for the local node
 var _local_node: ConstellationNode
+
+## Stores all known devices by thier NodeID
+var _known_nodes: Dictionary[String, ConstellationNode] = {}
+
+## Stores all unknown nodes yet to be found on the network
+var _unknown_nodes: Dictionary[String, ConstellationNode]
 
 ## All known network session
 var _known_sessions: Dictionary[String, ConstellationSession]
@@ -98,13 +101,7 @@ var _link_check_timer: Timer = Timer.new()
 ## Timer used to delay the auto restart when network link returns
 var _link_up_restart_delay: Timer = Timer.new()
 
-## Stores all known devices by thier NodeID
-var _known_nodes: Dictionary[String, ConstellationNode] = {}
-
-## Stores all unknown nodes yet to be found on the network
-var _unknown_nodes: Dictionary[String, ConstellationNode]
-
-## Stores all multi part messages being recieved
+## Stores all multi-part buffers still awaiting new data
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
 
@@ -180,11 +177,11 @@ func _ready() -> void:
 		ConstellationConfig.bind_interface = str(cli_args[cli_args.find("--ctl-interface") + 1])
 	
 	if cli_args.has("--ctl-controler"):
-		_role_flags = RoleFlags.CONTROLLER
+		_role_flags = ConstaNetHeadder.RoleFlags.CONTROLLER
 		_local_node._set_role_flags(_role_flags)
 	
 	if cli_args.has("--ctl-executor"):
-		_role_flags = RoleFlags.EXECUTOR
+		_role_flags = ConstaNetHeadder.RoleFlags.EXECUTOR
 		_local_node._set_role_flags(_role_flags)
 	
 	if cli_args.has("--ctl-random-id"):
@@ -195,7 +192,7 @@ func _ready() -> void:
 	).call_deferred()
 
 
-## Polls the socket
+## process
 func _process(delta: float) -> void:
 	while _udp_socket.get_available_packet_count() > 0:
 		_handle_packet(_udp_socket.get_packet())
@@ -213,13 +210,13 @@ func _process(delta: float) -> void:
 		_process_multi_part(multi_part)
 
 
-## Handles notification
+## notification
 func _notification(p_what: int) -> void:
 	if p_what == NOTIFICATION_WM_CLOSE_REQUEST:
 		ConstellationConfig.save_user_config()
 
 
-## Starts the node
+## Starts this node, binding all network sockets and starting the discovery process
 func start_node() -> Error:
 	if _network_state != NetworkState.OFFLINE:
 		return ERR_ALREADY_EXISTS
@@ -242,7 +239,7 @@ func start_node() -> Error:
 	return OK
 
 
-## Stops the node
+## Stops this node, sends a ConstaNetGoodBye message and closes all network sockets and 
 func stop_node(p_internal_only: bool = false) -> Error:
 	if not p_internal_only:
 		_log("Stopping Node")
@@ -283,7 +280,8 @@ func restart_node() -> void:
 	start_node()
 
 
-## Sends a command to the session, using p_node_filter as the NodeFilter
+## Sends a command to the current session, returning ERR_UNAVAILABLE if one does not exist
+## p_node_filter defines what nodes the command should be sent to
 func send_command(
 	p_command: Variant, 
 	p_node_filter: NetworkSession.NodeFilter = NetworkSession.NodeFilter.MASTER, 
@@ -301,7 +299,7 @@ func send_discovery() -> void:
 	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
-## Creates and joins a new session
+## Creates and joines a new session, returns the new session object
 func create_session(p_name: String) -> NetworkSession:
 	if not p_name or _network_state != NetworkState.READY:
 		return null
@@ -322,12 +320,12 @@ func create_session(p_name: String) -> NetworkSession:
 	return session
 
 
-## Joins a pre-existing session on the network
+## Joins a pre-existing session on the network, returns true if the session was joined successfully
 func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	return _local_node.join_session(p_session, p_auto_priority, p_priority)
 
 
-## Leaves a session 
+## Leaves the current session, returns true if the session was left successfully
 func leave_session() -> bool:
 	return _local_node.leave_session()
 
@@ -366,7 +364,7 @@ func get_known_nodes() -> Array[NetworkNode]:
 	return return_value
 
 
-## Returns all unknown NetworkNodes
+## Returns a list of all unknown nodes
 func get_unknown_nodes() -> Array[NetworkNode]:
 	var return_value: Array[NetworkNode]
 	return_value.assign(_unknown_nodes.values())
@@ -374,7 +372,7 @@ func get_unknown_nodes() -> Array[NetworkNode]:
 	return return_value
 
 
-## Returns all known NetworkSessions
+## Returns a list of all known session
 func get_known_sessions() -> Array[NetworkSession]:
 	var return_value: Array[NetworkSession]
 	return_value.assign(_known_sessions.values())
@@ -382,7 +380,7 @@ func get_known_sessions() -> Array[NetworkSession]:
 	return return_value
 
 
-## Returns all unknown NetworkSessions
+## Returns a list of all unknown sessions
 func get_unknown_sessions() -> Array[NetworkSession]:
 	var return_value: Array[NetworkSession]
 	return_value.assign(_unknown_sessions.values())
@@ -390,7 +388,7 @@ func get_unknown_sessions() -> Array[NetworkSession]:
 	return return_value
 
 
-## Gets the local node
+## Returns the local node
 func get_local_node() -> ConstellationNode:
 	return _local_node
 
@@ -400,17 +398,18 @@ func get_node_name() -> String:
 	return _local_node.get_node_name()
 
 
-## Gets this nodes NodeID
+## Returns the node id of the local node
 func get_node_id() -> String:
 	return _local_node.get_node_id()
 
 
-## Gets this nodes RoleFlags
+## Returns the role flags of the local node
 func get_role_flags() -> int:
 	return _local_node.get_role_flags()
 
 
-## Returns the a session from the Id, or NULL
+## Attempts to return a session based on the given session id, return null if no matching session was found
+## if p_create_unknown == true, an unknown session will be created if no matching session could be found
 func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -> ConstellationSession:
 	if _known_sessions.has(p_session_id):
 		return _known_sessions[p_session_id]
@@ -419,7 +418,7 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 		if _unknown_sessions.has(p_session_id):
 			return _unknown_sessions[p_session_id]
 		
-		_log("Unable to find ConstellationSession: \"", p_session_id, "\" localy. Creating unknown session")
+		_logv("Unable to find ConstellationSession: \"", p_session_id, "\" localy. Creating unknown session")
 		var unknown_session: ConstellationSession = ConstellationSession.create_unknown_session(p_session_id)
 		
 		_unknown_sessions[p_session_id] = unknown_session
@@ -431,7 +430,8 @@ func get_session_from_id(p_session_id: String, p_create_unknown: bool = false) -
 	return _known_sessions.get(p_session_id)
 
 
-## Gets a Node from its NodeID
+## Attempts to return a node based on the given node id, return null if no matching node was found
+## if p_create_unknown == true, an unknown node will be created if no matching node could be found
 func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> ConstellationNode:
 	if _known_nodes.has(p_node_id):
 		return _known_nodes[p_node_id]
@@ -452,7 +452,7 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 	return null
 
 
-## Sets the network state
+## Sets the NetworkState
 func _set_network_state(p_network_state: NetworkState) -> bool:
 	if p_network_state == _network_state:
 		return false
@@ -509,7 +509,7 @@ func _logv(...args) -> void:
 		print_verbose(_get_log_prefix(), "".join(args))
 
 
-## Starts this node, opens network connection
+## Opens and binds all network ports and sockets
 func _bind_network() -> void:
 	_mcast_tx.set_reuse_address_enabled(true)
 	_mcast_rx.set_reuse_address_enabled(true)
@@ -566,7 +566,7 @@ func _close_network() -> void:
 	set_process(false)
 
 
-## Starts the discovery stage
+## Starts the discovery process
 func _begin_discovery() -> void:
 	_disco_timer.start()
 	
@@ -580,7 +580,7 @@ func _begin_discovery() -> void:
 	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
-## Auto creates a session
+## Handles session auto creation
 func _auto_create_session() -> void:
 	create_session(_local_node.get_node_name() + "'s Session")
 
@@ -596,7 +596,7 @@ func _attempt_session_auto_connect(p_session: ConstellationSession) -> void:
 		join_session(p_session)
 
 
-## Creates a discovery message
+## Creates and returns a new ConstaNetDiscovery messages with all field filled in
 func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetDiscovery:
 	var message: ConstaNetDiscovery = ConstaNetDiscovery.new()
 	
@@ -613,7 +613,7 @@ func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetD
 	return message
 
 
-## Sends a message to UDP Broadcast
+## Sends the given message to multicast
 func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	if _network_state == NetworkState.OFFLINE:
 		return ERR_UNAVAILABLE
@@ -631,7 +631,7 @@ func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
 	return tx_error
 
 
-## Sends a discovery message to broadcasr
+## Sends a ConstaNetDiscovery message to multicast
 func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Error:
 	var message: ConstaNetDiscovery = _create_discovery(p_flags)
 	
@@ -641,7 +641,7 @@ func _send_discovery(p_flags: int = ConstaNetHeadder.Flags.ACKNOWLEDGMENT) -> Er
 	return _send_message_mcast(message)
 
 
-## Sends a sessions anouncement message
+## Sends a ConstaNetSessionDiscovery message to multicast
 func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST, p_session: ConstellationSession = null) -> Error:
 	var message: ConstaNetSessionDiscovery = ConstaNetSessionDiscovery.new()
 	
@@ -662,7 +662,7 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST, p_se
 	return _send_message_mcast(message)
 
 
-## Sends a goodbye message
+## Sends a ConstaNetGoodbye message to multicast
 func _send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
 	var message: ConstaNetGoodbye = ConstaNetGoodbye.new()
 	
@@ -700,28 +700,28 @@ func _handle_packet(p_packet: PackedByteArray, p_source: StreamPeerTCP = null) -
 		_handle_message(message, p_source)
 
 
-## Handles an incomming message, 
+## Handles an incomming message
 func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null) -> void:
 	if p_message.target_id and p_message.target_id != get_node_id():
 		return
 	
 	match p_message.type:
-		MessageType.DISCOVERY:
+		ConstaNetHeadder.Type.DISCOVERY:
 			_handle_discovery_message(p_message, p_source)
 		
-		MessageType.SESSION_DISCOVERY when p_message.is_request():
+		ConstaNetHeadder.Type.SESSION_DISCOVERY when p_message.is_request():
 			_handle_session_discovery_request(p_message)
 		
-		MessageType.SESSION_DISCOVERY when p_message.is_acknowledgment() or p_message.is_announcement():
+		ConstaNetHeadder.Type.SESSION_DISCOVERY when p_message.is_acknowledgment() or p_message.is_announcement():
 			_handle_session_discovery_ack_announce(p_message)
 		
-		MessageType.SESSION_SET_PRIORITY:
+		ConstaNetHeadder.Type.SESSION_SET_PRIORITY:
 			_handle_session_set_priority(p_message)
 		
-		MessageType.SESSION_SET_ATTRIBUTE:
+		ConstaNetHeadder.Type.SESSION_SET_ATTRIBUTE:
 			_handle_session_set_attribute(p_message)
 		
-		MessageType.MULTI_PART:
+		ConstaNetHeadder.Type.MULTI_PART:
 			_handle_multi_part(p_message)
 	
 	if p_message.target_id == get_node_id():
@@ -731,7 +731,7 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 		_known_nodes[p_message.origin_id]._handle_message(p_message, p_source)
 
 
-## Handles a discovery message
+## Handles a ConstaNetDiscovery message
 func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: StreamPeerTCP = null) -> void:
 	_logv("Got Discovery: ", p_discovery.get_flags_human(), " from: \"", p_discovery.node_name, "\"")
 	
@@ -798,7 +798,7 @@ func _handle_session_discovery_ack_announce(p_session_discovery: ConstaNetSessio
 	_attempt_session_auto_connect(session)
 
 
-## Handles a ConstaNetSessionSetPriority
+## Handles a ConstaNetSessionSetPriority message
 func _handle_session_set_priority(p_session_set_priority: ConstaNetSessionSetPriority) -> void:
 	var node: ConstellationNode = get_node_from_id(p_session_set_priority.node_id)
 	var session: ConstellationSession = get_session_from_id(p_session_set_priority.session_id)
@@ -807,7 +807,7 @@ func _handle_session_set_priority(p_session_set_priority: ConstaNetSessionSetPri
 		session._set_node_priority(node, p_session_set_priority.position)
 
 
-## Handles a ConstaNetSessionSetMaster
+## Handles a ConstaNetSessionSetAttribute message
 func _handle_session_set_attribute(p_session_set_attribute: ConstaNetSessionSetAttribute) -> void:
 	var session: ConstellationSession = get_session_from_id(p_session_set_attribute.session_id)
 	
@@ -822,7 +822,7 @@ func _handle_session_set_attribute(p_session_set_attribute: ConstaNetSessionSetA
 			session._set_session_master(get_node_from_id(p_session_set_attribute.value))
 
 
-## Handles ConstaNetMultiPart
+## Handles a ConstaNetMultiPart message
 func _handle_multi_part(p_multi_part: ConstaNetMultiPart) -> void:
 	if _active_multi_parts.has(p_multi_part.multi_part_id):
 		_active_multi_parts[p_multi_part.multi_part_id].store_multi_part(p_multi_part)

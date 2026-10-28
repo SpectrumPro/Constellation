@@ -273,7 +273,7 @@ func connect_node() -> Error:
 ## if p_force == true, a HeartBeat ANNOUNCEMENT message will be sent to inform the remote
 ## node this disconnect will not follow the handshake process. Socket will be closed immediately
 func disconnect_node(p_clear_locks: bool = false, p_force: bool = false) -> Error:
-	if not is_in_connection_state():
+	if is_in_offline_state() or _connection_state == ConnectionState.DISCOVERED:
 		return ERR_DOES_NOT_EXIST
 	
 	if p_force:
@@ -777,6 +777,9 @@ func _start_rapid_reconnect() -> void:
 	if _connection_state != ConnectionState.LOST_CONNECTION:
 		return
 	
+	if _heartbeat_ping_active:
+		_stop_heartbeat_ping()
+	
 	_network._log(
 		"Attempting rapid reconnect to \"", _name, "\" ",
 		RAPID_RECONNECT_ATTEMPTS, " pings with a ",
@@ -947,8 +950,8 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 
 ## Handles a ConstaNetGoodbye
 func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
-	_leave_session()
 	disconnect_node(false, true)
+	_leave_session()
 	_udp_socket.close()
 	_set_connection_status(ConnectionState.OFFLINE)
 
@@ -1114,6 +1117,7 @@ func _process_awaiting_heartbeats() -> void:
 		
 		if rtt > HEARTBEAT_TIMEOUT_MS:
 			_process_missed_heartbeat_ping(sequence)
+			return
 
 
 ## Handles a heartbeat ping response and updated the ping timer

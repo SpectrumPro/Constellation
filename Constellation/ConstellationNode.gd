@@ -273,6 +273,9 @@ func connect_node() -> Error:
 ## if p_force == true, a HeartBeat ANNOUNCEMENT message will be sent to inform the remote
 ## node this disconnect will not follow the handshake process. Socket will be closed immediately
 func disconnect_node(p_clear_locks: bool = false, p_force: bool = false) -> Error:
+	if is_local():
+		return ERR_UNAVAILABLE
+	
 	if is_in_offline_state() or _connection_state == ConnectionState.DISCOVERED:
 		return ERR_DOES_NOT_EXIST
 	

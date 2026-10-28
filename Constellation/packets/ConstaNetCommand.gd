@@ -1,5 +1,6 @@
-# Copyright (c) 2025 Liam Sherwin, All rights reserved.
-# This file is part of the Constellation Network Engine, licensed under the GPL v3.
+# Copyright (c) Liam Sherwin. All rights reserved.
+# This file is part of the Constellation Network Engine.
+# Licensed under the GPL v3.0 or later. See the LICENSE.md file for details.
 
 class_name ConstaNetCommand extends ConstaNetHeadder
 ## ConstaNET Command packet, used to send a command message to one or more nodes in a session

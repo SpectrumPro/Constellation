@@ -126,7 +126,7 @@ const A_MSG_TARGET: String = "target_id"
 
 
 ## Current proto version as uint16
-const VERSION: int = 8
+const VERSION: int = 9
 
 ## Byte length for a NodeID
 const NODE_ID_LENGTH: int = TypeLength.NODEID

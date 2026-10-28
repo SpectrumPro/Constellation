@@ -31,6 +31,19 @@ const RAPID_RECONNECT_ATTEMPTS: int = 10
 ## Interval between sending rapid reconnect pings
 const RAPID_RECONNECT_INTERVAL: float = 1
 
+## Highest sequence number for heartbeat messages
+const MAX_HEARTBEAT_SEQUENCE: int = 0xFFFFFF
+
+## Lowest sequence number for heartbeat messages, 
+## sequence 0 disqualify the message from being used for ping detection
+const MIN_HEARTBEAT_SEQUENCE: int = 1
+
+## Interval in seconds to send heartbeat pings 
+const HEARTBEAT_PING_INTERVAL: int = 1
+
+## Max time in milliseconds the remote node has to respond to a heartbeat ping
+const HEARTBEAT_TIMEOUT_MS: int = 2000
+
 
 ## MessageType
 const MessageType: ConstaNetHeadder.Type = ConstaNetHeadder.Type
@@ -83,11 +96,14 @@ var _tcp_previous_status: int = StreamPeerTCP.Status.STATUS_NONE
 ## Stores all connection locks in a Set
 var _connection_locks: Set = Set.new()
 
-## UNIX timestamp of when the last heartbeat was sent
-var _last_heart_beat_at: float
+## Time when each heartbeat message was sent { sequence: Time.get_ticks_msec() }
+var _heart_beat_send_time: Dictionary[int, float]
 
-## True when a heartbeat ACK message has been received since last refresh
-var _has_received_heartbeat_ack: bool = false
+## Previous sequence number for heartbeat messages, wraps around at MAX_HEARTBEAT_SEQUENCE
+var _previous_heart_beat_sequence: int = MIN_HEARTBEAT_SEQUENCE
+
+## True when heartbeat ping messages are being sent
+var _heartbeat_ping_active: bool = false
 
 ## Number of rapid reconnect attempts that have been sent
 var _rapid_reconnect_attempts: int = 0
@@ -103,6 +119,9 @@ var _discovery_timeout_timer: Timer = Timer.new()
 
 ## Used for wait time between sending rapid reconnect pings
 var _rapid_reconnect_timer: Timer = Timer.new()
+
+## Used for wait time between sending heartbeat pings
+var _heartbeat_ping_timer: Timer = Timer.new()
 
 
 ## Creates a new ConstellationNode from a ConstaNetDiscovery message
@@ -193,8 +212,14 @@ func _ready() -> void:
 	_rapid_reconnect_timer.set_wait_time(RAPID_RECONNECT_INTERVAL)
 	_rapid_reconnect_timer.timeout.connect(_on_rapid_interval_timeout)
 	
+	_heartbeat_ping_timer.set_autostart(false)
+	_heartbeat_ping_timer.set_one_shot(false)
+	_heartbeat_ping_timer.set_wait_time(HEARTBEAT_PING_INTERVAL)
+	_heartbeat_ping_timer.timeout.connect(_on_heartbeat_ping_timeout)
+	
 	add_child(_disconnect_ack_timeout_timer)
 	add_child(_rapid_reconnect_timer)
+	add_child(_heartbeat_ping_timer)
 	
 	if not is_local():
 		add_child(_discovery_timeout_timer)
@@ -202,17 +227,11 @@ func _ready() -> void:
 
 ## Called each frame
 func _process(delta: float) -> void:
-	_tcp_socket.poll()
-	var status: StreamPeerTCP.Status = _tcp_socket.get_status()
+	if is_instance_valid(_tcp_socket):
+		_process_tcp_socket()
 	
-	if status != _tcp_previous_status:
-		_tcp_previous_status = status
-		
-		_handle_tcp_status_update(status)
-	
-	if status == StreamPeerTCP.STATUS_CONNECTED:
-		while _tcp_socket.get_available_bytes() > 0:
-			_network._handle_packet_frame(_tcp_socket)
+	if _heartbeat_ping_active:
+		_process_awaiting_heartbeats()
 
 
 ## Connectes TCP to this node
@@ -228,6 +247,9 @@ func connect_node() -> Error:
 	
 	if _rapid_reconnect_active:
 		_stop_rapid_reconnect()
+	
+	if _heartbeat_ping_active:
+		_stop_heartbeat_ping()
 	
 	_set_connection_status(ConnectionState.CONNECTING)
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
@@ -275,9 +297,6 @@ func disconnect_node(p_clear_locks: bool = false, p_force: bool = false) -> Erro
 	if p_clear_locks:
 		_connection_locks.clear()
 	
-	_ping = NAN
-	ping_changed.emit(_ping)
-	
 	return OK
 
 
@@ -302,7 +321,7 @@ func remove_connection_lock(p_key: Variant) -> void:
 	_connection_locks.remove(p_key)
 	
 	if not _connection_locks.size():
-		disconnect_node()
+		disconnect_node(true)
 
 
 ## Sends a message to the remote node
@@ -315,7 +334,7 @@ func send_message(p_message: ConstaNetHeadder, p_transport_mode: TransportMode =
 			return send_message_udp(p_message)
 		
 		TransportMode.AUTO:
-			if _tcp_socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+			if is_instance_valid(_tcp_socket) and _tcp_socket.get_status() == StreamPeerTCP.STATUS_CONNECTED:
 				return send_message_tcp(p_message)
 			
 			else:
@@ -655,6 +674,12 @@ func _set_node_ip(p_node_ip: String) -> bool:
 	return true
 
 
+## Sets the ping time
+func _set_ping(p_ping: int) -> void:
+	_ping = p_ping
+	ping_changed.emit(_ping)
+
+
 ## Sets the nodes session
 func _set_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
 	if is_instance_valid(p_session):
@@ -717,6 +742,11 @@ func _mark_as_unknown(p_unknown: bool) -> void:
 		no_longer_unknown.emit()
 
 
+## Returns true if the given sequence number is with in the valid range
+func _is_sequence_valid(p_sequence: int) -> bool:
+	return p_sequence >= MIN_HEARTBEAT_SEQUENCE and p_sequence <= MAX_HEARTBEAT_SEQUENCE
+
+
 ## Handles the final stage of the connect process after the HeartBeat handshake
 func _final_connect() -> void:
 	_send_heartbeat(
@@ -726,16 +756,20 @@ func _final_connect() -> void:
 	)
 	
 	_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-	_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
+	_start_heartbeat_ping()
 
 
 ## Handles the final step of the disconnect process after the HeartBeat handshake
 func _final_disconnect() -> void:
+	_stop_heartbeat_ping()
+	
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 	
 	_set_connection_status(ConnectionState.DISCOVERED)
 	_network._logv("Successfully disconnected from: ", _name)
+	
+	_set_ping(NAN)
 
 
 ## Beings the rapid reconnect process, ConnectionState must be LOST_CONNECTION to start
@@ -758,6 +792,30 @@ func _start_rapid_reconnect() -> void:
 func _stop_rapid_reconnect() -> void:
 	_rapid_reconnect_timer.stop()
 	_rapid_reconnect_active = false
+
+
+## Starts the heartbeat ping process
+func _start_heartbeat_ping() -> void:
+	if _connection_state != ConnectionState.CONNECTED:
+		return
+	
+	_network._logv(
+		"Starting heartbeat ping to: \"", _name, "\" ",
+		"interval: ", HEARTBEAT_PING_INTERVAL, "s"
+	)
+	
+	_heartbeat_ping_active = true
+	_heartbeat_ping_timer.start(HEARTBEAT_PING_INTERVAL)
+	_send_heartbeat_ping()
+
+
+## Stops sending heartbeat pings
+func _stop_heartbeat_ping() -> void:
+	_previous_heart_beat_sequence = MIN_HEARTBEAT_SEQUENCE
+	_heart_beat_send_time.clear()
+	
+	_heartbeat_ping_timer.stop()
+	_heartbeat_ping_active = false
 
 
 ## Sends a Discovery Flags.REQUEST to the remote node over TCP
@@ -790,10 +848,13 @@ func _send_discovery_acknowledment(p_transport_mode: TransportMode = TransportMo
 func _send_heartbeat(
 	p_mode: ConstaNetHeartBeat.Mode,
 	p_flags: int,
-	p_transport_mode: TransportMode = TransportMode.AUTO
+	p_transport_mode: TransportMode = TransportMode.AUTO,
+	p_sequence: int = 0
 ):
 	var message: ConstaNetHeartBeat = _auto_fill_headder(ConstaNetHeartBeat.new(), p_flags)
+	
 	message.mode = p_mode
+	message.sequence = p_sequence
 	
 	var errcode: Error = send_message(message, p_transport_mode)
 	_network._logv(
@@ -803,8 +864,22 @@ func _send_heartbeat(
 		", to: ", get_uname(), 
 		", errcode: ", error_string(errcode)
 	)
+
+
+## Sends a heartbeat ping and records the timestamp
+func _send_heartbeat_ping() -> void:
+	_previous_heart_beat_sequence += 1
 	
-	_last_heart_beat_at = Time.get_unix_time_from_system()
+	if _previous_heart_beat_sequence >= MAX_HEARTBEAT_SEQUENCE:
+		_previous_heart_beat_sequence = MIN_HEARTBEAT_SEQUENCE
+	
+	_send_heartbeat(
+		ConstaNetHeartBeat.Mode.HEARTBEAT, 
+		ConstaNetHeadder.Flags.REQUEST, 
+		TransportMode.TCP,
+		_previous_heart_beat_sequence
+	)
+	_heart_beat_send_time[_previous_heart_beat_sequence] = Time.get_ticks_msec()
 
 
 ## Sends a SetAttribute message to the remote node
@@ -932,16 +1007,20 @@ func _handle_heartbeat(p_heart_beat: ConstaNetHeartBeat, p_source: StreamPeerTCP
 ## Handles a ConstaNetHeartBeat Mode.HEARTBEAT message
 func _handle_heartbeat_ping(p_heart_beat: ConstaNetHeartBeat) -> void:
 	if p_heart_beat.is_request():
-		_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.ACKNOWLEDGMENT)
+		_send_heartbeat(
+			ConstaNetHeartBeat.Mode.HEARTBEAT, 
+			ConstaNetHeadder.Flags.ACKNOWLEDGMENT,
+			TransportMode.AUTO,
+			p_heart_beat.sequence
+		)
 	
 	elif p_heart_beat.is_acknowledgment():
-		_ping = Time.get_unix_time_from_system() - _last_heart_beat_at
-		_has_received_heartbeat_ack = true
-		ping_changed.emit(snappedf(_ping, 0.001))
-		
 		if _connection_state == ConnectionState.LOST_CONNECTION and _rapid_reconnect_active:
 			_network._log(_name, " has responded to a rapid reconnect ping, reconnecting...")
 			connect_node()
+		
+		elif _connection_state == ConnectionState.CONNECTED and _heartbeat_ping_active:
+			_process_heartbeat_ping(p_heart_beat)
 
 
 ## Handles a ConstaNetHeartBeat Mode.CONNECTION message
@@ -950,8 +1029,7 @@ func _handle_heartbeat_connection(p_heart_beat: ConstaNetHeartBeat, p_source: St
 		_connection_state == ConnectionState.AWAITING_CONNECTION_ACK \
 		and p_heart_beat.is_acknowledgment() and p_heart_beat.is_allowed() \
 	:
-		_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
-		_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
+		_final_connect()
 		
 	elif not is_in_offline_state() and p_heart_beat.is_request() and is_instance_valid(p_source):
 		_final_connect()
@@ -1027,6 +1105,57 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		_network._logv(_name, ":_update_from_discovery reconnect_tcp == true, errcode: ", error_string(errcode))
 
 
+## Processes all heartbeat messages that have not gotten a response yet
+func _process_awaiting_heartbeats() -> void:
+	for sequence: int in _heart_beat_send_time.keys():
+		var time_now: int = Time.get_ticks_msec()
+		var time_sent: int = _heart_beat_send_time[sequence]
+		var rtt: int = time_now - time_sent
+		
+		if rtt > HEARTBEAT_TIMEOUT_MS:
+			_process_missed_heartbeat_ping(sequence)
+
+
+## Handles a heartbeat ping response and updated the ping timer
+func _process_heartbeat_ping(p_heartbeat: ConstaNetHeartBeat) -> void:
+	if not _is_sequence_valid(p_heartbeat.sequence):
+		return
+	
+	var sequence: int = p_heartbeat.sequence
+	
+	if not _heart_beat_send_time.has(sequence):
+		_network._log_warn(
+			"Recieved HeartBeat ping from: \"", _name, "\" ",
+			" with an unknown sequence number: ", sequence
+		)
+		return
+	
+	var time_now: int = Time.get_ticks_msec()
+	var time_sent: int = _heart_beat_send_time[sequence]
+	var rtt: int = time_now - time_sent
+	
+	if rtt > HEARTBEAT_TIMEOUT_MS:
+		_process_missed_heartbeat_ping(sequence)
+	else:
+		_heart_beat_send_time.erase(sequence)
+		_set_ping(rtt)
+		
+		_network._logv("RTT time to node: \"", _name, "\" changed to: ", rtt, "ms")
+
+
+## Processes a missed heartbeat message
+func _process_missed_heartbeat_ping(p_sequence: int) -> void:
+	_network._log(
+		"\"", _name, "\" has failed to respond to ping sequence: ", p_sequence,
+		" after: ", HEARTBEAT_TIMEOUT_MS, "ms"
+	)
+	
+	_heart_beat_send_time.erase(p_sequence)
+	_set_connection_status(ConnectionState.LOST_CONNECTION)
+	
+	_start_rapid_reconnect()
+
+
 ## Autofills a ConstaNetHeadder with the infomation to comunicate to this remote node
 func _auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int = Flags.NONE) -> ConstaNetHeadder:
 	p_headder.origin_id = _network.get_node_id()
@@ -1038,16 +1167,33 @@ func _auto_fill_headder(p_headder: ConstaNetHeadder, p_flags: int = Flags.NONE) 
 	return p_headder
 
 
+## Processes the TCP socket
+func _process_tcp_socket() -> void:
+	_tcp_socket.poll()
+	var status: StreamPeerTCP.Status = _tcp_socket.get_status()
+	
+	if status != _tcp_previous_status:
+		_tcp_previous_status = status
+		
+		_handle_tcp_status_update(status)
+
+	if status == StreamPeerTCP.STATUS_CONNECTED:
+		while _tcp_socket.get_available_bytes() > 0:
+			_network._handle_packet_frame(_tcp_socket)
+
+
 ## Changed the TCP stream that is used to comunicate to the remote node
 func _use_stream(p_stream: StreamPeerTCP) -> void:
-	if _tcp_socket == p_stream or is_local():
+	if not is_instance_valid(p_stream) or _tcp_socket == p_stream or is_local():
 		return
 	
 	_network._logv("Changing StreamPeerTCP object for: \"", _name, "\"")
 	
 	_network._remove_peer_from_process(_tcp_socket)
 	_tcp_socket.disconnect_from_host()
+	
 	_tcp_socket = p_stream
+	_tcp_socket.set_no_delay(true)
 
 
 ## Handles a change of the TCP connection status
@@ -1079,19 +1225,6 @@ func _handle_tcp_status_error() -> void:
 			_start_rapid_reconnect()
 
 
-## Runs a refresh step
-func _refresh() -> void:
-	_network._logv("Last seen delta to: \"", get_node_name(), "\" is: ", snappedf(_ping, 0.001), "ms")
-	
-	if not _has_received_heartbeat_ack:
-		_network._log("ConstellationNode: \"", get_node_name(), "\" has taken too long to respond")
-		_set_connection_status(ConnectionState.LOST_CONNECTION)
-		_start_rapid_reconnect()
-	
-	_has_received_heartbeat_ack = false
-	_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
-
-
 ## Called when the disconnect ACK timeer times out
 func _on_disconnect_act_timeout() -> void:
 	if _connection_state == ConnectionState.AWAITING_DISCONNECT_ACK:
@@ -1118,8 +1251,13 @@ func _on_rapid_interval_timeout() -> void:
 			_rapid_reconnect_attempts, " attempts"
 		)
 		_set_connection_status(ConnectionState.OFFLINE)
-		_stop_rapid_reconnect()
+		disconnect_node(false, true)
 	
 	else:
 		_send_heartbeat(ConstaNetHeartBeat.Mode.HEARTBEAT, ConstaNetHeadder.Flags.REQUEST)
 		_rapid_reconnect_attempts += 1
+
+
+## Called when the heartbeat interval timer times out
+func _on_heartbeat_ping_timeout() -> void:
+	_send_heartbeat_ping()

@@ -92,9 +92,6 @@ var _disco_timer: Timer = Timer.new()
 ## Timer for session auto create
 var _session_auto_create_timer: Timer = Timer.new()
 
-## Timer used when running a network refresh
-var _refresh_timer: Timer = Timer.new()
-
 ## Timer used for the network link check
 var _link_check_timer: Timer = Timer.new()
 
@@ -156,11 +153,6 @@ func _ready() -> void:
 	_session_auto_create_timer.set_wait_time(NODE_DISCO_TIMEOUT)
 	_session_auto_create_timer.timeout.connect(_on_session_timer_timeout)
 	
-	_refresh_timer.set_autostart(false)
-	_refresh_timer.set_one_shot(false)
-	_refresh_timer.set_wait_time(NODE_DISCO_TIMEOUT)
-	_refresh_timer.timeout.connect(_on_refresh_timer_timeout)
-	
 	_link_check_timer.set_autostart(false)
 	_link_check_timer.set_one_shot(false)
 	_link_check_timer.set_wait_time(LINK_CHECK_INTERVAL)
@@ -174,7 +166,6 @@ func _ready() -> void:
 	add_child(_local_node)
 	add_child(_disco_timer)
 	add_child(_session_auto_create_timer)
-	add_child(_refresh_timer)
 	add_child(_link_check_timer)
 	add_child(_link_up_restart_delay)
 	
@@ -280,7 +271,6 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	
 	_disco_timer.stop()
 	_session_auto_create_timer.stop()
-	_refresh_timer.stop()
 	
 	_set_network_state(NetworkState.OFFLINE)
 	return OK
@@ -579,7 +569,6 @@ func _close_network() -> void:
 ## Starts the discovery stage
 func _begin_discovery() -> void:
 	_disco_timer.start()
-	_refresh_timer.start()
 	
 	if ConstellationConfig.auto_create_session and ConstellationConfig.session_id:
 		_session_auto_create_timer.start()
@@ -850,7 +839,7 @@ func _handle_incoming_tcp_connection() -> bool:
 		return false
 	
 	_connected_tcp_peers.append(peer)
-	_tcp_buffers[peer] = PackedByteArray()
+	_tcp_buffers.erase(peer)
 	
 	_logv("Accepted new TCP Peer from: ", peer.get_connected_host(), ":", peer.get_connected_port())
 	return true
@@ -890,15 +879,6 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 		_logv("Dropping multipart ", p_multi_part.id, ". Max timeout exceeded")
 		_active_multi_parts.erase(p_multi_part.id)
 		p_multi_part.free()
-
-
-## Pings all nodes and sessions on the network to check they are still online.
-func _refresh() -> void:
-	for node: ConstellationNode in _known_nodes.values():
-		if node.get_connection_state() != NetworkNode.ConnectionState.CONNECTED or node.is_local():
-			continue
-		
-		node._refresh()
 
 
 ## Checks the link status of the network interface being used
@@ -966,11 +946,6 @@ func _on_session_timer_timeout() -> void:
 func _on_session_delete_request(p_session: ConstellationSession) -> void:
 	p_session.delete_requested.disconnect(_on_session_delete_request)
 	_known_sessions.erase(p_session.get_session_id())
-
-
-## Called when the refresh timer times out
-func _on_refresh_timer_timeout() -> void:
-	_refresh()
 
 
 ## Called when the network link timer times out

@@ -928,13 +928,16 @@ func _handle_message(p_message: ConstaNetHeadder, p_source: StreamPeerTCP = null
 
 ## Handles a ConstaNetDiscovery
 func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	if p_discovery.is_request():
-		_send_discovery_acknowledment()
-	
 	if is_local():
+		if p_discovery.is_request():
+			_send_discovery_acknowledment()
+		
 		return
 	
 	_update_from_discovery(p_discovery)
+	
+	if p_discovery.is_request():
+		_send_discovery_acknowledment()
 	
 	if is_in_offline_state() or is_in_error_state():
 		_set_connection_status(ConnectionState.DISCOVERED)

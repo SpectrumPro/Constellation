@@ -1,80 +1,140 @@
-# Copyright (c) 2026 Liam Sherwin, All rights reserved.
-# This file is part of the Constellation Network Engine, licensed under the GPL v3.
+# Copyright (c) Liam Sherwin. All rights reserved.
+# This file is part of the Constellation Network Engine.
+# Licensed under the GPL v3.0 or later. See the LICENSE.md file for details.
 
 class_name ConstaNetHeadder extends RefCounted
-## Base ConstsNetHeadder class for ConstaNET headders
+## Represents the headder for all ConstaNet messages
 
 
-## Current proto version
-const VERSION: int = 2
-
-## The length in bytes a NodeID should be
-const NODE_ID_LENGTH: int = 36
-
-## Length of a ConstaNetHeadder, without origin and target NodeIDs
-const HEADDER_LENGTH_NO_ID: int = 1 + 8 + 2 + 2
-
-## Length of a ConstaNetHeadder
-const HEADDER_LENGTH: int = HEADDER_LENGTH_NO_ID + NODE_ID_LENGTH + NODE_ID_LENGTH
-
-
-## Type Enum
+## Enum for Type
 enum Type {
-	UNKNOWN, 				# Init base state
+	UNKNOWN, 				# Default
+	DISCOVERY,				# REQ / ACK to discover nodes
+	GOODBYE,				# Announces a node going offline
 	
-	DISCOVERY,				# Client/server broadcasts "Who’s there?"
-	GOODBYE,				# Node going offline
-	COMMAND,				# Lighting cue or control command
-	MULTI_PART,				# Multipart messsage
+	COMMAND,				# Command for one or more nodes in a session
+	MULTI_PART,				# Message containing chunks of a larger message
+	SET_ATTRIBUTE,			# Sets an attribute on a node
+	HEARTBEAT,				# Used to init, de-init, and sustain connections
 	
-	SET_ATTRIBUTE,			# Sets an attribute on a node, name, ipaddress, ect..
-	STATE_REQUEST,			# Request full state sync
-	HEARTBEAT,				# Periodic alive signal
-	
-	SESSION_ANNOUNCE,		# Announces a new session
-	SESSION_DISCOVERY,		# Requests network nodes to anounce sessions
-	SESSION_JOIN,			# New node joining a session
-	SESSION_LEAVE,			# Node leaving a session
-	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session, name, master, ect..
-	SESSION_SET_PRIORITY,	# Sets the fail over proirity of a node
-	
-	SYS_EXCLUSIVE			# Device/vendor specific or extended data
+	SESSION_DISCOVERY,		# REQ / ACK to discover session
+	SESSION_SET_ATTRIBUTE,	# Sets an attribute on a session
+	SESSION_SET_PRIORITY,	# Sets the proirity of a node in a session
 }
 
-## Flags Enum (bitmask-compatible)
+## Enum for Flags
 enum Flags {
 	NONE				= 0,		# Default state
 	REQUEST				= 1 << 0,	# This message is requesting a responce
 	ACKNOWLEDGMENT		= 1 << 1,	# This message is responding to a request
 	ERROR				= 1 << 2,	# This message contains an error
 	ANNOUNCEMENT		= 1 << 3,	# This message contains new or updated infomation
-	RETRANSMISSION		= 1 << 4,	# This message has been re-transmitted from a RelayServer
+	DENIED				= 1 << 4,	# This action has been denied by the sender, used with ACKNOWLEDGMENT
+	ALLOWED				= 1 << 5,	# This action has been allowed by the sender, used with ACKNOWLEDGMENT
 }
 
-## Enum for network roles
+## Enum for RoleFlags
 enum RoleFlags {
 	NONE				= 0,
-	EXECUTOR			= 1 << 0,	# Performs the actions defined by the Controller
-	CONTROLLER			= 1 << 1,	# # Sends control and command messages to the Executer 
+	EXECUTOR			= 1 << 0,	# Defines a node that has the ability to process data
+	CONTROLLER			= 1 << 1,	# Defines a node that can only send controls executors
 }
 
+## Number of bytes used to store each data type
+enum TypeLength {
+	UINT8		= 1,
+	INT8		= 1,
+	BOOL		= 1,
+	
+	UINT16		= 2,
+	INT16		= 2,
+	
+	UINT32		= 4,
+	INT32		= 4,
+	FLOAT32		= 4,
+	
+	UINT64		= 8,
+	INT64		= 8,
+	FLOAT64		= 8,
+	
+	NODEID		= 36,
+	BLOCK		= 0,
+	IPV4		= 4,
+}
 
 ## Matches the Type enum to a class
 static var ClassTypes: Dictionary[int, Script] = {
 	Type.UNKNOWN: 				ConstaNetHeadder,
 	Type.DISCOVERY: 			ConstaNetDiscovery,
 	Type.GOODBYE: 				ConstaNetGoodbye,
+	
 	Type.COMMAND: 				ConstaNetCommand,
 	Type.MULTI_PART: 			ConstaNetMultiPart,
 	Type.SET_ATTRIBUTE: 		ConstaNetSetAttribute,
 	Type.HEARTBEAT:				ConstaNetHeartBeat,
-	Type.SESSION_ANNOUNCE: 		ConstaNetSessionAnnounce,
+	
 	Type.SESSION_DISCOVERY: 	ConstaNetSessionDiscovery,
-	Type.SESSION_JOIN: 			ConstaNetSessionJoin,
-	Type.SESSION_LEAVE: 		ConstaNetSessionLeave,
 	Type.SESSION_SET_ATTRIBUTE: ConstaNetSessionSetAttribute,
 	Type.SESSION_SET_PRIORITY: 	ConstaNetSessionSetPriority,
 }
+
+
+## Byte length for VERSION number
+const L_PROTO_VERSION: TypeLength = TypeLength.UINT16
+
+## Byte length for message size
+const L_MSG_SIZE: TypeLength = TypeLength.UINT64
+
+## Byte length for message type
+const L_MSG_TYPE: TypeLength = TypeLength.UINT16
+
+## Byte length for message flags
+const L_MSG_FLAGS: TypeLength = TypeLength.UINT16
+
+
+## Byte offset for VERSION number
+const O_PROTO_VERSION: int = 0
+
+## Byte offset for message size
+const O_MSG_SIZE: int = O_PROTO_VERSION + L_PROTO_VERSION
+
+## Byte offset for message type
+const O_MSG_TYPE: int = O_MSG_SIZE + L_MSG_SIZE
+
+## Byte offset for message flags
+const O_MSG_FLAGS: int = O_MSG_TYPE + L_MSG_TYPE
+
+
+## String attribute for protocal version
+const A_PROTO_VERSION: String = "version"
+
+## String attribute for message type
+const A_MSG_TYPE: String = "type"
+
+## String attribute for message flags
+const A_MSG_FLAGS: String = "flags"
+
+## String attribute for message origin NodeID
+const A_MSG_ORIGIN: String = "origin_id"
+
+## String attribute for message target NodeID
+const A_MSG_TARGET: String = "target_id"
+
+
+## Current proto version as uint16
+const VERSION: int = 9
+
+## Byte length for a NodeID
+const NODE_ID_LENGTH: int = TypeLength.NODEID
+
+## Length of a ConstaNetHeadder, without origin and target NodeIDs
+const HEADDER_LENGTH_NO_ID: int = O_MSG_FLAGS + L_MSG_FLAGS
+
+## Length of a ConstaNetHeadder
+const HEADDER_LENGTH: int = HEADDER_LENGTH_NO_ID + NODE_ID_LENGTH + NODE_ID_LENGTH
+
+## Length of a IPv4 Address
+const IPV4_LENGTH: int = TypeLength.IPV4
 
 
 ## The type of this ConstaNET packet
@@ -92,15 +152,18 @@ var target_id: String
 ## Version number of the orignal message
 var _origin_version: int = 0
 
+## The Constellation CoreGlobal instance
+static var _network: Constellation
+
 
 ## Gets this ConstaNETHeadder as a Dictionary
 func get_as_dict() -> Dictionary[String, Variant]:
 	return _get_as_dict().merged({
-		"version": VERSION,
-		"type": type,
-		"flags": flags,
-		"origin_id": origin_id,
-		"target_id": target_id
+		A_PROTO_VERSION: VERSION,
+		A_MSG_TYPE: type,
+		A_MSG_FLAGS: flags,
+		A_MSG_ORIGIN: origin_id,
+		A_MSG_TARGET: target_id
 	})
 
 
@@ -115,16 +178,16 @@ func get_as_packet() -> PackedByteArray:
 	
 	result.resize(HEADDER_LENGTH_NO_ID)
 	
-	result.encode_u16(0, VERSION)	## Version number
-	result.encode_u64(1, 0)			## Placeholder size
-	result.encode_u16(9, type)		## Meassage type
-	result.encode_u16(11, flags)	## Messsage flags
+	result.encode_u16(O_PROTO_VERSION, VERSION)		## Version number
+	result.encode_u64(O_MSG_SIZE, 0)				## Placeholder size
+	result.encode_u16(O_MSG_TYPE, type)				## Meassage type
+	result.encode_u16(O_MSG_FLAGS, flags)			## Messsage flags
 	
 	result.append_array(get_origin_as_buffer())		## OriginID
 	result.append_array(get_target_as_buffer())		## TargetID
 	
-	result.append_array(_get_as_packet())	## Meassage body
-	result.encode_u64(1, result.size())		## Meassage length
+	result.append_array(_get_as_packet())			## Meassage body
+	result.encode_u64(O_MSG_SIZE, result.size())	## Meassage length
 	
 	return result
 
@@ -139,12 +202,9 @@ func get_target_as_buffer() -> PackedByteArray:
 	return get_id_as_buffer(target_id)
 
 
-## Gets an ID as a buffer
-func get_id_as_buffer(p_id: String) -> PackedByteArray:
-	var id_array: PackedByteArray = p_id.to_ascii_buffer()
-	id_array.resize(NODE_ID_LENGTH)
-	
-	return id_array
+## Returns the flags of this header as a human readable string, eg "Flag1+Flag2"
+func get_flags_human() -> String:
+	return Utils.flags_to_string(flags, Flags)
 
 
 ## Returns true if this ConstaNet message is valid
@@ -155,7 +215,7 @@ func is_valid() -> bool:
 	return _is_valid()
 
 
-## Sets this ConstaNet message's Request flag
+## Sets the REQUEST flag
 func set_request(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.REQUEST
@@ -163,7 +223,7 @@ func set_request(p_state: bool) -> void:
 		flags &= ~Flags.REQUEST
 
 
-## Sets this ConstaNet message's Acknowledgment flag
+## Sets the ACKNOWLEDGMENT flag
 func set_acknowledgment(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ACKNOWLEDGMENT
@@ -171,7 +231,7 @@ func set_acknowledgment(p_state: bool) -> void:
 		flags &= ~Flags.ACKNOWLEDGMENT
 
 
-## Sets this ConstaNet message's Error flag
+## Sets the ERROR flag
 func set_error(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ERROR
@@ -179,7 +239,7 @@ func set_error(p_state: bool) -> void:
 		flags &= ~Flags.ERROR
 
 
-## Sets this ConstaNet message's Announcement flag
+## Sets the ANNOUNCEMENT flag
 func set_announcement(p_state: bool) -> void:
 	if p_state:
 		flags |= Flags.ANNOUNCEMENT
@@ -187,48 +247,61 @@ func set_announcement(p_state: bool) -> void:
 		flags &= ~Flags.ANNOUNCEMENT
 
 
-## Sets this ConstaNet message's Retransmission flag
-func set_retransmission(p_state: bool) -> void:
+## Sets the DENIED flag
+func set_denied(p_state: bool) -> void:
 	if p_state:
-		flags |= Flags.RETRANSMISSION
+		flags |= Flags.DENIED
 	else:
-		flags &= ~Flags.RETRANSMISSION
+		flags &= ~Flags.DENIED
 
 
-## Returns true if the Request flag is set
+## Sets the ALLOWED flag
+func set_allowed(p_state: bool) -> void:
+	if p_state:
+		flags |= Flags.ALLOWED
+	else:
+		flags &= ~Flags.ALLOWED
+
+
+## Returns true if the REQUEST flag is set
 func is_request() -> bool:
 	return (flags & Flags.REQUEST) != 0
 
 
-## Returns true if the Acknowledgment flag is set
+## Returns true if the ACKNOWLEDGMENT flag is set
 func is_acknowledgment() -> bool:
 	return (flags & Flags.ACKNOWLEDGMENT) != 0
 
 
-## Returns true if the Error flag is set
+## Returns true if the ERROR flag is set
 func is_error() -> bool:
 	return (flags & Flags.ERROR) != 0
 
 
-## Returns true if the Announcement flag is set
+## Returns true if the ANNOUNCEMENT flag is set
 func is_announcement() -> bool:
 	return (flags & Flags.ANNOUNCEMENT) != 0
 
 
-## Returns true if the Retransmission flag is set
-func is_retransmission() -> bool:
-	return (flags & Flags.RETRANSMISSION) != 0
+## Returns true if the DENIED flag is set
+func is_denied() -> bool:
+	return (flags & Flags.DENIED) != 0
 
 
-## Phrases a Dictionary
-static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
+## Returns true if the ALLOWED flag is set
+func is_allowed() -> bool:
+	return (flags & Flags.ALLOWED) != 0
+
+
+## parses a Dictionary
+static func parse_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	var message: ConstaNetHeadder
 	
-	var p_origin_version: int = type_convert(p_dict.get("version", 0), TYPE_INT)
-	var p_type: int = type_convert(p_dict.get("type", 0), TYPE_INT)
-	var p_flags: int = type_convert(p_dict.get("flags", 0), TYPE_INT)
-	var p_origin_id: String = type_convert(p_dict.get("origin_id", ""), TYPE_STRING)
-	var p_target_id: String = type_convert(p_dict.get("target_id", ""), TYPE_STRING)
+	var p_origin_version: int = type_convert(p_dict.get(A_PROTO_VERSION, -1), TYPE_INT)
+	var p_type: int = type_convert(p_dict.get(A_MSG_TYPE, Type.UNKNOWN), TYPE_INT)
+	var p_flags: int = type_convert(p_dict.get(A_MSG_FLAGS, Flags.NONE), TYPE_INT)
+	var p_origin_id: String = type_convert(p_dict.get(A_MSG_ORIGIN, ""), TYPE_STRING)
+	var p_target_id: String = type_convert(p_dict.get(A_MSG_TARGET, ""), TYPE_STRING)
 	
 	if p_type not in ClassTypes:
 		return ConstaNetHeadder.new()
@@ -240,106 +313,124 @@ static func phrase_dict(p_dict: Dictionary) -> ConstaNetHeadder:
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
 	
-	message._phrase_dict(p_dict)
+	message._parse_dict(p_dict)
 	
 	return message
 
 
-## Phrases a String
-static func phrase_string(p_string: String) -> ConstaNetHeadder:
-	if not p_string:
-		return ConstaNetHeadder.new()
-	
+## parses a String
+static func parse_string(p_string: String) -> ConstaNetHeadder:
 	var data: Variant = JSON.parse_string(p_string)
 	
 	if not data:
 		return ConstaNetHeadder.new()
 	
-	return phrase_dict(data)
+	return parse_dict(data)
 
 
-## Phrases a PackedByteArray
-static func phrase_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
+## parses a PackedByteArray
+static func parse_packet(p_packet: PackedByteArray) -> ConstaNetHeadder:
 	if not is_packet_valid(p_packet):
+		_network._log_warn("Unable to parse packet. Invalid header!")
 		return ConstaNetHeadder.new()
 	
-	var offset: int = 9
+	var p_version: int = p_packet.decode_u16(O_PROTO_VERSION)
+	var p_type: int = p_packet.decode_u16(O_MSG_TYPE) 
+	var p_flags: int = p_packet.decode_u16(O_MSG_FLAGS)
 	
-	var p_type: int = p_packet.decode_u16(offset)
-	offset += 2
-	
-	var p_flags: int = p_packet.decode_u16(offset)
-	offset += 2
-	
+	var offset: int = HEADDER_LENGTH_NO_ID
 	var p_origin_id: String = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
-	offset += NODE_ID_LENGTH
 	
-	var p_target_id: String = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
 	offset += NODE_ID_LENGTH
+	var p_target_id: String = p_packet.slice(offset, offset + NODE_ID_LENGTH).get_string_from_ascii()
 	
 	if p_type not in ClassTypes:
 		return ConstaNetHeadder.new()
 	
 	var message: ConstaNetHeadder = ClassTypes[p_type].new()
+	message._origin_version = p_version
 	
-	message._origin_version = p_packet.decode_u8(0)
 	message.type = p_type as Type
 	message.flags = p_flags
 	message.origin_id = p_origin_id
 	message.target_id = p_target_id
 	
-	message._phrase_packet(p_packet.slice(HEADDER_LENGTH))
-	
+	message._parse_packet(p_packet.slice(HEADDER_LENGTH))
 	return message
 
 
 ## Checks if a given packet is valid
 static func is_packet_valid(p_packet: PackedByteArray) -> bool:
-	return p_packet.size() >= HEADDER_LENGTH and p_packet.decode_u8(0) == VERSION
+	return (
+		p_packet.size() >= HEADDER_LENGTH 
+		and p_packet.decode_u16(O_PROTO_VERSION) == VERSION
+	)
 
 
-## Converts an integer to a little-endian PackedByteArray
-static func ba(value: int, byte_count: int = 4) -> PackedByteArray:
-	var packed: PackedByteArray = PackedByteArray()
+## Converts an IPV4 string to a PackedByteArray
+static func get_ipv4_as_buffer(p_ipv4: String) -> PackedByteArray:
+	var address: PackedStringArray = p_ipv4.split(".")
+	var buffer: PackedByteArray = PackedByteArray()
+	buffer.resize(IPV4_LENGTH)
 	
-	for i in range(byte_count):
-		packed.append((value >> (8 * i)) & 0xFF)
+	if address.size() != IPV4_LENGTH:
+		return buffer
 	
-	return packed
+	for index: int in range(address.size()):
+		buffer[index] = int(address[index])
+	
+	return buffer
 
 
-## Reads a little-endian integer from a PackedByteArray
-static func ba_to_int(p_packet: PackedByteArray, offset: int, byte_count: int) -> int:
-	var result: int = 0
+## Gets an ID as a buffer
+static func get_id_as_buffer(p_id: String) -> PackedByteArray:
+	var id_array: PackedByteArray = p_id.to_ascii_buffer()
+	id_array.resize(NODE_ID_LENGTH)
 	
-	if p_packet.size() < offset + byte_count:
-		return 0
-	
-	for i in range(byte_count):
-		result |= p_packet[offset + i] << (8 * i)
-	
-	return result
+	return id_array
 
 
-## Converts an IP string to a PackedByteArray
-static func ip_to_bytes(ip: String) -> PackedByteArray:
-	var bytes: PackedByteArray = PackedByteArray()
-	
-	for part: String in ip.split("."):
-		bytes.append(int(part))
-	
-	bytes.resize(4)
-	return bytes
+## Encodes the given NodeID at the given offset into the given array
+static func encode_node_id(p_offset: int, p_node_id: String, p_array: PackedByteArray) -> void:
+	encode_block(p_offset, get_id_as_buffer(p_node_id), p_array)
 
 
-## Converts an IP byte array to a string
-static func bytes_to_ip(bytes: PackedByteArray) -> String:
-	var ip: String = ""
+## Decodes a NodeID at the given offset in the given array
+static func decode_node_id(p_offset: int, p_array: PackedByteArray) -> String:
+	return decode_block(p_offset, NODE_ID_LENGTH, p_array).get_string_from_ascii()
+
+
+## Encodes a IPv4 address into the array at the given offset
+static func encode_ipv4(p_offset: int, p_ipv4: String, p_array: PackedByteArray) -> void:
+	encode_block(p_offset, get_ipv4_as_buffer(p_ipv4), p_array)
+
+
+## Decodes an IPv4 address from the array at the given offset
+static func decode_ipv4(p_offset: int, p_array: PackedByteArray) -> String:
+	var buffer: PackedByteArray = decode_block(p_offset, IPV4_LENGTH, p_array)
+	var address: String = ""
 	
-	for byte: int in bytes:
-		ip += str(byte) + "."
+	for octet: int in buffer:
+		address += str(octet, ".")
 	
-	return ip.substr(0, ip.length() - 1)
+	return address.left(-1)
+
+
+## Encodes a block at the given offset into the given array
+static func encode_block(p_offset: int, p_block: PackedByteArray, p_array: PackedByteArray) -> void:
+	for index: int in range(p_block.size()):
+		p_array[index + p_offset] = p_block[index]
+
+
+## Decodes a block at the given offset in the given array
+static func decode_block(p_offset: int, p_size: int, p_array: PackedByteArray) -> PackedByteArray:
+	var buffer: PackedByteArray = PackedByteArray()
+	buffer.resize(p_size)
+	
+	for index: int in range(buffer.size()):
+		buffer[index] = p_array[index + p_offset]
+	
+	return buffer
 
 
 ## Override this function to provide a method to get the packet as a Dictionary
@@ -352,13 +443,13 @@ func _get_as_packet() -> PackedByteArray:
 	return []
 
 
-## Override this function to provide a method to phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
+## Override this function to provide a method to parse a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
 	pass
 
 
-## Override this function to provide a method to phrases a Dictionary
-func _phrase_packet(p_packet: PackedByteArray) -> void:
+## Override this function to provide a method to parse a Dictionary
+func _parse_packet(p_packet: PackedByteArray) -> void:
 	pass
 
 

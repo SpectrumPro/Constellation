@@ -1,17 +1,82 @@
-# Copyright (c) 2025 Liam Sherwin, All rights reserved.
-# This file is part of the Constellation Network Engine, licensed under the GPL v3.
+# Copyright (c) Liam Sherwin. All rights reserved.
+# This file is part of the Constellation Network Engine.
+# Licensed under the GPL v3.0 or later. See the LICENSE.md file for details.
 
 class_name ConstaNetDiscovery extends ConstaNetHeadder
-## ConstaNET Discovery packet
+## ConstaNET Discovery packet, used for discovery requests / acknowledgements between nodes
 
 
-## The name of the origin node
-var node_name: String = "UnNamedNode"
+## Byte length for the node IP address
+const L_NODE_IP: TypeLength = TypeLength.IPV4
+
+## Byte length for the RoleFlags
+const L_ROLE_FLAGS: TypeLength = TypeLength.UINT16
+
+## Byte length for the TCP port
+const L_TCP_PORT: TypeLength = TypeLength.UINT16
+
+## Byte length for the UDP port
+const L_UDP_PORT: TypeLength = TypeLength.UINT16
+
+## Byte length for the disco time
+const L_DISCO_TIME: TypeLength = TypeLength.UINT8
+
+## Byte length for the name length
+const L_NAME_LENGTH: TypeLength = TypeLength.UINT16
+
+## Byte length for the node name
+const L_NODE_NAME: TypeLength = TypeLength.BLOCK
+
+
+## Byte offset for the node IP address
+const O_NODE_IP: int = 0
+
+## Byte offset for the RoleFlags
+const O_ROLE_FLAGS: int = O_NODE_IP + L_NODE_IP
+
+## Byte offset for the TCP port
+const O_TCP_PORT: int = O_ROLE_FLAGS + L_ROLE_FLAGS
+
+## Byte offset for the UDP port
+const O_UDP_PORT: int = O_TCP_PORT + L_TCP_PORT
+
+## Byte offset for the disco time
+const O_DISCO_TIME: int = O_UDP_PORT + L_UDP_PORT
+
+## Byte offset for the name length
+const O_NAME_LENGTH: int = O_DISCO_TIME + L_DISCO_TIME
+
+## Byte offset for the node name
+const O_NODE_NAME: int = O_NAME_LENGTH + L_NAME_LENGTH
+
+
+## String attribute for node IP address
+const A_NODE_IP: String = "node_ip"
+
+## String attribute for RoleFlags
+const A_ROLE_FLAGS: String = "role_flags"
+
+## String attribute for the TCP port
+const A_TCP_PORT: String = "tcp_port"
+
+## String attribute for the UDP port
+const A_UDP_PORT: String = "udp_port"
+
+## String attribute for the disco time
+const A_DISCO_TIME: String = "disco_time"
+
+## String attribute for the node name
+const A_NODE_NAME: String = "node_name"
+
+
+## Byte length of this message with out the node name
+const MESAGE_LENGTH_NO_NAME: int = O_NODE_NAME
+
 
 ## The IP address of the origin node
 var node_ip: String = ""
 
-## The NetworkRole of this node
+## The RoleFlags of this node
 var role_flags: int = RoleFlags.EXECUTOR
 
 ## The TCP port used by this node
@@ -20,8 +85,14 @@ var tcp_port: int = 0
 ## The UDP port used by this node
 var udp_port: int = 0
 
+## The interval time in seconds this node will send discovery messages
+var disco_time: int = 0
 
-## Init
+## The name of this node
+var node_name: String = "UnNamedNode"
+
+
+## init
 func _init() -> void:
 	type = Type.DISCOVERY
 
@@ -29,69 +100,81 @@ func _init() -> void:
 ## Gets this ConstaNetDiscovery as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"node_name": node_name,
-		"node_ip": node_ip,
-		"role_flags": role_flags,
-		"tcp_port": tcp_port,
-		"udp_port": udp_port
+		A_NODE_IP: node_ip,
+		A_ROLE_FLAGS: role_flags,
+		A_TCP_PORT: tcp_port,
+		A_UDP_PORT: udp_port,
+		A_DISCO_TIME: disco_time,
+		A_NODE_NAME: node_name,
 	}
 
 
 ## Gets this ConstaNetDiscovery as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
+	result.resize(MESAGE_LENGTH_NO_NAME)
+	
+	encode_ipv4(O_NODE_IP, node_ip, result)
+	result.encode_u16(O_ROLE_FLAGS, role_flags)
+	
+	result.encode_u16(O_TCP_PORT, tcp_port)
+	result.encode_u16(O_UDP_PORT, udp_port)
+	result.encode_u16(O_DISCO_TIME, disco_time)
+	
 	var name_buffer: PackedByteArray = node_name.to_ascii_buffer()
 	
-	if name_buffer.size() > (1 << 16):
-		name_buffer.resize((1 << 16))
-	
-	result.append(name_buffer.size())	## Name length
-	result.append_array(name_buffer)	## Name string
-	
-	result.append_array(ip_to_bytes(node_ip))	## Ip address
-	result.append_array(ba(role_flags, 2))		## Role flags
-	
-	result.append_array(ba(tcp_port, 2))		## TCP port
-	result.append_array(ba(udp_port, 2))		## UDP port
+	result.encode_u16(O_NAME_LENGTH, name_buffer.size())
+	result.append_array(name_buffer)
 	
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
-	node_name = type_convert(p_dict.get("node_name", ""), TYPE_STRING)
-	node_ip = type_convert(p_dict.get("node_ip", ""), TYPE_STRING)
-	role_flags = type_convert(p_dict.get("role_flags", 0), TYPE_INT)
-	tcp_port = type_convert(p_dict.get("tcp_port", 0), TYPE_INT)
-	udp_port = type_convert(p_dict.get("udp_port", 0), TYPE_INT)
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
+	var p_node_ip = type_convert(p_dict.get(A_NODE_IP, ""), TYPE_STRING)
+	var p_role_flags = type_convert(p_dict.get(A_ROLE_FLAGS, 0), TYPE_INT)
+	var p_tcp_port = type_convert(p_dict.get(A_TCP_PORT, 0), TYPE_INT)
+	var p_udp_port = type_convert(p_dict.get(A_UDP_PORT, 0), TYPE_INT)
+	var p_disco_time = type_convert(p_dict.get(A_DISCO_TIME, 0), TYPE_INT)
+	var p_node_name = type_convert(p_dict.get(A_NODE_NAME, ""), TYPE_STRING)
+	
+	node_ip = p_node_ip
+	role_flags = p_role_flags
+	tcp_port = p_tcp_port
+	udp_port = p_udp_port
+	disco_time = p_disco_time
+	node_name = p_node_name
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < 1:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
+	if p_packet.size() < MESAGE_LENGTH_NO_NAME:
+		_network._log_warn("Unable to parse ConstaNetDiscovery. Packet too short!")
 		return
 	
-	var offset: int = 0
-	var name_length: int = p_packet.decode_u8(offset)
-	offset += 1
+	var p_node_ip: String = decode_ipv4(O_NODE_IP, p_packet)
+	var p_role_flags: int = p_packet.decode_u16(O_ROLE_FLAGS)
+	var p_tcp_port: int = p_packet.decode_u16(O_TCP_PORT)
+	var p_udp_port: int = p_packet.decode_u16(O_UDP_PORT)
+	var p_disco_time: int = p_packet.decode_u8(O_DISCO_TIME)
+	var p_name_length: int = p_packet.decode_u16(O_NAME_LENGTH)
 	
-	if p_packet.size() < offset + name_length + 10:
+	if p_packet.size() < O_NODE_NAME + p_name_length:
+		_network._log_warn("Unable to parse ConstaNetDiscovery. (p_packet.size() < O_NODE_NAME + p_name_length) == true")
 		return
 	
-	node_name = p_packet.slice(offset, offset + name_length).get_string_from_ascii()
-	offset += name_length
+	var p_node_name: String = decode_block(
+		O_NODE_NAME, 
+		p_name_length, 
+		p_packet
+	).get_string_from_ascii()
 	
-	node_ip = bytes_to_ip(p_packet.slice(offset, offset + 4))
-	offset += 4
-	
-	role_flags = ba_to_int(p_packet, offset, 2)
-	offset += 2
-	
-	tcp_port = ba_to_int(p_packet, offset, 2)
-	offset += 2
-	
-	udp_port = ba_to_int(p_packet, offset, 2)
-	offset += 2
+	node_ip = p_node_ip
+	role_flags = p_role_flags
+	tcp_port = p_tcp_port
+	udp_port = p_udp_port
+	disco_time = p_disco_time
+	node_name = p_node_name
 
 
 ## Checks if this ConstaNetDiscovery is valid

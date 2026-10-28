@@ -1,16 +1,38 @@
-
-# Copyright (c) 2025 Liam Sherwin, All rights reserved.
-# This file is part of the Constellation Network Engine, licensed under the GPL v3.
+# Copyright (c) Liam Sherwin. All rights reserved.
+# This file is part of the Constellation Network Engine.
+# Licensed under the GPL v3.0 or later. See the LICENSE.md file for details.
 
 class_name ConstaNetGoodbye extends ConstaNetHeadder
-## ConstaNET Goodbye packet
+## ConstaNET Goodbye packet, used to inform the network when a node is going offline
+
+
+## Byte length for the length of reason string
+const L_REASON_LENGTH: TypeLength = TypeLength.UINT16
+
+## Byte length for the reason string
+const L_REASON_STRING: TypeLength = TypeLength.BLOCK
+
+
+## Byte offset for reason length
+const O_REASON_LENGTH: int = 0
+
+## Byte offset for reason string
+const O_REASON_STRING: int = O_REASON_LENGTH + L_REASON_LENGTH
+
+
+## String attribute for reason
+const A_REASON: String = "reason"
+
+
+## Message length with out the varibal reason
+const MESSAGE_LENGTH_NO_REASON: int = O_REASON_STRING
 
 
 ## Reason for this node going offlin
 var reason: String = "Unknown"
 
 
-## Init
+## init
 func _init() -> void:
 	type = Type.GOODBYE
 
@@ -18,40 +40,46 @@ func _init() -> void:
 ## Gets this ConstaNetGoodbye as a Dictionary
 func _get_as_dict() -> Dictionary[String, Variant]:
 	return {
-		"reason": reason,
+		A_REASON: reason,
 	}
 
 
 ## Gets this ConstaNetGoodbye as a PackedByteArray
 func _get_as_packet() -> PackedByteArray:
 	var result: PackedByteArray = PackedByteArray()
-	var reason_bytes: PackedByteArray = reason.to_ascii_buffer()
+	result.resize(MESSAGE_LENGTH_NO_REASON)
 	
-	result.append_array(ba(reason_bytes.size(), 2))
-	result.append_array(reason_bytes)
+	var reason_buffer: PackedByteArray = reason.to_ascii_buffer()
+	result.encode_u16(O_REASON_LENGTH, reason_buffer.size())
+	result.append_array(reason_buffer)
 	
 	return result
 
 
-## Phrases a Dictionary
-func _phrase_dict(p_dict: Dictionary) -> void:
-	reason = type_convert(p_dict.get("reason", ""), TYPE_STRING)
+## parses a Dictionary
+func _parse_dict(p_dict: Dictionary) -> void:
+	reason = type_convert(p_dict.get(A_REASON, ""), TYPE_STRING)
 
 
-## Phrases a PackedByteArray
-func _phrase_packet(p_packet: PackedByteArray) -> void:
-	if p_packet.size() < 2:
+## parses a PackedByteArray
+func _parse_packet(p_packet: PackedByteArray) -> void:
+	if p_packet.size() < MESSAGE_LENGTH_NO_REASON:
+		_network._log_warn("Unable to parse ConstaNetGoodbye. Packet too short!")
 		return
 	
-	var offset: int = 0
-	var reason_size: int = ba_to_int(p_packet, offset, 2)
-	offset += 2
+	var p_reason_length: int = p_packet.decode_u16(O_REASON_LENGTH)
 	
-	if p_packet.size() < offset + reason_size:
+	if p_packet.size() < O_REASON_STRING + p_reason_length:
+		_network._log_warn("Unable to parse ConstaNetGoodbye. (p_packet.size() < O_REASON_STRING + p_reason_length) == true")
 		return
 	
-	reason = p_packet.slice(offset, offset + reason_size).get_string_from_ascii()
-	offset += reason_size
+	var p_reason_string: String = decode_block(
+		O_REASON_STRING, 
+		p_reason_length, 
+		p_packet
+	).get_string_from_ascii()
+	
+	reason = p_reason_string
 
 
 ## Checks if this ConstaNetGoodbye is valid

@@ -527,7 +527,13 @@ func _update_with(p_message: ConstaNetSessionDiscovery) -> bool:
 			_remove_node(current_node, true)
 	
 	for node_id: String in new_nodes:
-		_add_node(_network.get_node_from_id(node_id, true), false, new_nodes[node_id])
+		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
+		var priority: int = new_nodes[node_id]
+		
+		if node.is_local():
+			_network.join_session(self, false, priority)
+		else:
+			_add_node(node, false, priority)
 	
 	return true
 

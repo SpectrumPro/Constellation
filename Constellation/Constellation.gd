@@ -40,11 +40,6 @@ const LINK_CHECK_RESTART_DELAY: float = 2
 const MULTI_PART_MAX_WAIT: int = 10
 
 
-
-## ConstaNetGoodbye reason for going offline
-const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
-
-
 ## TCPServer to handle incomming connection from other nodes
 var _tcp_socket: TCPServer = TCPServer.new()
 
@@ -240,11 +235,11 @@ func start_node() -> Error:
 	return OK
 
 
-## Stops this node, sends a ConstaNetGoodBye message and closes all network sockets and 
+## Stops this node, sends a ConstaNetGoodbye message and closes all network sockets and 
 func stop_node(p_internal_only: bool = false) -> Error:
 	if not p_internal_only:
 		_log("Stopping Node")
-		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
+		_send_goodbye()
 	
 	_set_network_state(NetworkState.SHUTTING_DOWN)
 	_close_network()
@@ -664,12 +659,11 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST, p_se
 
 
 ## Sends a ConstaNetGoodbye message to multicast
-func _send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
+func _send_goodbye(p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
 	var message: ConstaNetGoodbye = ConstaNetGoodbye.new()
 	
 	message.origin_id = get_node_id()
 	message.flags = p_flags
-	message.reason = p_reason
 	
 	return _send_message_mcast(message)
 

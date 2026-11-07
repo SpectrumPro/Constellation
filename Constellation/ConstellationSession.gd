@@ -285,6 +285,9 @@ func can_be_session_master(p_node: ConstellationNode) -> bool:
 	if not _node_priorities.has_right(p_node):
 		return false
 	
+	if p_node.is_local() and p_node.is_executor():
+		return true
+	
 	var is_new: bool = p_node == _just_added_node
 	var state_valid: bool = p_node.is_in_connection_state() if is_new else p_node.is_node_connected()
 	

@@ -142,7 +142,7 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 static func create_local_node() -> ConstellationNode:
 	var node: ConstellationNode = ConstellationNode.new()
 	
-	node._connection_state = ConnectionState.CONNECTED
+	node._connection_state = ConnectionState.LOCAL
 	node._node_flags = NodeFlags.LOCAL_NODE
 	
 	return node
@@ -913,7 +913,7 @@ func _send_set_attribute(
 	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
 	set_attribute.value = p_value
 	
-	var errcode: Error = send_message_udp(set_attribute)
+	var errcode: Error = send_message(set_attribute)
 	_network._log(
 		"Sent SetAttribute to: \"", _name, "\"",
 		", attribute: ", ConstaNetSetAttribute.Attribute.keys()[p_attribute],

@@ -19,6 +19,9 @@ signal node_ip_changed(ip: String)
 ## The MTU for udp payloads, if this is exceeded the command will be sent as a multipart message
 const UDP_MTP: int = 1000
 
+## Time in seconds to wait for a connect ACK message before attempting rapid reconnect
+const CONNECT_ACK_TIMEOUT: float = 2.0
+
 ## Time in seconds to wait for a disconnect ACK message before forcing a disconnect
 const DISCONNECT_ACK_TIMEOUT: float = 2.0
 
@@ -101,6 +104,9 @@ var _rapid_reconnect_attempts: int = 0
 
 ## True if rapid reconnect is active
 var _rapid_reconnect_active: bool = false
+
+## Timer to wait for a connect ACK message before attempting rapid reconnect
+var _connect_ack_timeout_timer: Timer = Timer.new()
 
 ## Timer to wait for a disconnect ACK message before forcing a disconnect
 var _disconnect_ack_timeout_timer: Timer = Timer.new()
@@ -188,6 +194,11 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 
 ## ready
 func _ready() -> void:
+	_connect_ack_timeout_timer.set_autostart(false)
+	_connect_ack_timeout_timer.set_one_shot(true)
+	_connect_ack_timeout_timer.set_wait_time(CONNECT_ACK_TIMEOUT)
+	_connect_ack_timeout_timer.timeout.connect(_on_connect_act_timeout)
+	
 	_disconnect_ack_timeout_timer.set_autostart(false)
 	_disconnect_ack_timeout_timer.set_one_shot(true)
 	_disconnect_ack_timeout_timer.set_wait_time(DISCONNECT_ACK_TIMEOUT)
@@ -208,6 +219,7 @@ func _ready() -> void:
 	_heartbeat_ping_timer.set_wait_time(HEARTBEAT_PING_INTERVAL)
 	_heartbeat_ping_timer.timeout.connect(_on_heartbeat_ping_timeout)
 	
+	add_child(_connect_ack_timeout_timer)
 	add_child(_disconnect_ack_timeout_timer)
 	add_child(_rapid_reconnect_timer)
 	add_child(_heartbeat_ping_timer)
@@ -760,6 +772,8 @@ func _is_sequence_valid(p_sequence: int) -> bool:
 
 ## Handles the final stage of the connect process after the HeartBeat handshake
 func _final_connect() -> void:
+	_connect_ack_timeout_timer.stop()
+	
 	_send_heartbeat(
 		ConstaNetHeartBeat.Mode.CONNECTION, 
 		ConstaNetHeadder.Flags.ALLOWED | ConstaNetHeadder.Flags.ACKNOWLEDGMENT,
@@ -1231,6 +1245,7 @@ func _handle_tcp_status_connected() -> void:
 		ConnectionState.CONNECTING:
 			_set_connection_status(ConnectionState.AWAITING_CONNECTION_ACK)
 			_send_heartbeat(ConstaNetHeartBeat.Mode.CONNECTION, ConstaNetHeadder.Flags.REQUEST, TransportMode.TCP)
+			_connect_ack_timeout_timer.start(CONNECT_ACK_TIMEOUT)
 
 
 ## Handles StreamPeerTCP.Status.STATUS_ERROR
@@ -1242,6 +1257,14 @@ func _handle_tcp_status_error() -> void:
 			_network._log("TCP Connection error to node: \"", _name, "\"")
 			_set_connection_status(ConnectionState.LOST_CONNECTION)
 			_start_rapid_reconnect()
+
+
+## Called when the connect ACK timeer times out
+func _on_connect_act_timeout() -> void:
+	if _connection_state == ConnectionState.AWAITING_CONNECTION_ACK:
+		_network._logv("Node: \"", _name, "\" has taken too to responde to Connect ACK.")
+		_set_connection_status(ConnectionState.LOST_CONNECTION)
+		_start_rapid_reconnect()
 
 
 ## Called when the disconnect ACK timeer times out

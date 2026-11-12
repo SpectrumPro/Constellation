@@ -255,6 +255,7 @@ func connect_node() -> Error:
 		_stop_heartbeat_ping()
 	
 	_set_connection_status(ConnectionState.CONNECTING)
+	_tcp_socket.bind(0, _network.get_ip_and_interface().get_address())
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	
 	_network._logv(

@@ -154,7 +154,7 @@ func _ready() -> void:
 	_link_up_restart_delay.set_autostart(false)
 	_link_up_restart_delay.set_one_shot(true)
 	_link_up_restart_delay.set_wait_time(LINK_CHECK_RESTART_DELAY)
-	_link_up_restart_delay.timeout.connect(restart_node)
+	_link_up_restart_delay.timeout.connect(_on_link_up_restart_delay_timeout)
 	
 	add_child(_local_node)
 	add_child(_disco_timer)
@@ -231,6 +231,7 @@ func start_node() -> Error:
 	
 	_set_network_state(NetworkState.READY)
 	_begin_discovery()
+	_check_auto_create_session()
 	
 	return OK
 
@@ -243,6 +244,7 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	
 	_set_network_state(NetworkState.SHUTTING_DOWN)
 	_close_network()
+	_stop_discovery()
 	
 	for node: ConstellationNode in _known_nodes.values():
 		if node == _local_node:
@@ -262,10 +264,9 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_unknown_nodes.clear()
 	_unknown_sessions.clear()
 	
-	_disco_timer.stop()
 	_session_auto_create_timer.stop()
-	
 	_set_network_state(NetworkState.OFFLINE)
+	
 	return OK
 
 
@@ -566,14 +567,22 @@ func _close_network() -> void:
 func _begin_discovery() -> void:
 	_disco_timer.start()
 	
+	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
+	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
+
+
+## Stops the discovery process
+func _stop_discovery() -> void:
+	_disco_timer.stop()
+
+
+## Checks config and attempts to auto create a session if permitted
+func _check_auto_create_session() -> void:
 	if ConstellationConfig.auto_create_session and ConstellationConfig.session_id:
 		_session_auto_create_timer.start()
 	
 	elif ConstellationConfig.auto_create_session:
 		_auto_create_session()
-	
-	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
-	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
 ## Handles session auto creation
@@ -898,12 +907,25 @@ func _check_network_link() -> void:
 	
 	else:
 		_log_error("Network link is DOWN")
+		
+		_close_network()
 		_set_network_state(NetworkState.ERROR)
 		
 		_link_up_restart_delay.stop()
 		_link_check_timer.start(LINK_CHECK_ERROR_INTERVAL)
 	
 	_ip_link_up = new_link_state
+
+
+## Handles re-binding network sockets when link is back up
+func _handle_link_up() -> void:
+	_bind_network()
+	if _network_state != NetworkState.BOUND:
+		_log_error("Error staring network")
+		return
+	
+	_set_network_state(NetworkState.READY)
+	_begin_discovery()
 
 
 ## Called when the node name is changed on the LocalNode
@@ -946,6 +968,12 @@ func _on_session_delete_request(p_session: ConstellationSession) -> void:
 ## Called when the network link timer times out
 func _on_link_check_timeout() -> void:
 	_check_network_link()
+
+
+## Called when the link up restart timer times out
+func _on_link_up_restart_delay_timeout() -> void:
+	if _network_state == NetworkState.ERROR:
+		_handle_link_up()
 
 
 ## ConstellationConfig object

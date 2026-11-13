@@ -1277,7 +1277,7 @@ func _on_disconnect_act_timeout() -> void:
 
 ## Called when the discovery timeer times out
 func _on_discovery_timeout() -> void:
-	if _connection_state == ConnectionState.DISCOVERED:
+	if is_in_discovered_state():
 		_network._log("Node: \"", get_node_name(), "\" has taken too long to respond ")
 		_set_connection_status(ConnectionState.OFFLINE)
 		_discovery_timeout_timer.stop()

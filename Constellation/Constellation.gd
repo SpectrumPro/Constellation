@@ -763,6 +763,7 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 
 ## Handles a ConstaNetSessionDiscovery REQ message
 func _handle_session_discovery_request(p_session_discovery: ConstaNetSessionDiscovery) -> void:
+	_logv("Got SessionDiscovery: ", p_session_discovery.get_flags_human())
 	var current_session: ConstellationSession = _local_node.get_session()
 	
 	if not current_session:

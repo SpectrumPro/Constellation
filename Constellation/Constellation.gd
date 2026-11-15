@@ -907,7 +907,7 @@ func _check_network_link() -> void:
 		_link_check_timer.start(LINK_CHECK_INTERVAL)
 	
 	else:
-		_log_error("Network link is DOWN")
+		_log("Network link is DOWN")
 		
 		_close_network()
 		_set_network_state(NetworkState.ERROR)

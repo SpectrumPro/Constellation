@@ -31,6 +31,10 @@ var _priority_order: Array[int]
 ## Used to decide if ConnectionState.CONNECTING is valid when electing a session master
 var _just_added_node: ConstellationNode = null
 
+## If true, this session active state will not be taken into account when deciding to auto-connect to a just added node
+## Used when creating from discovery to force auto-connect, as the local node may not have been added yet
+var _override_active_session_state: bool = false
+
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
 	_on_node_connection_state_changed,
@@ -46,6 +50,9 @@ static func create_from_session_discovery(p_message: ConstaNetSessionDiscovery) 
 	
 	session._set_session_id(p_message.session_id)
 	session._set_name(p_message.session_name)
+	
+	if nodes.has(_network.get_local_node().get_node_id()):
+		session._override_active_session_state = true
 	
 	var add_node: Callable = (func(node_id: String) -> void:
 		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
@@ -63,6 +70,7 @@ static func create_from_session_discovery(p_message: ConstaNetSessionDiscovery) 
 	for node_id: String in nodes:
 		add_node.call(node_id)
 	
+	session._override_active_session_state = false
 	return session
 
 
@@ -451,7 +459,10 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 	if p_node.is_executor():
 		_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
 	
-	if not p_node.is_local() and is_active_session() and not p_node.is_in_connection_state():
+	if (
+		not p_node.is_local() and (is_active_session() or _override_active_session_state)
+		and not p_node.is_in_connection_state()
+	):
 		_network._logv(
 			"A new ConstellationNode: \"", 
 			p_node.get_node_name(), 
@@ -495,7 +506,10 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 
 ## Elects a new session master from the proirity order
 func _elect_new_master() -> ConstellationNode:
-	if _nodes.has(_session_master) and _session_master.is_in_connection_state():
+	if (
+		_nodes.has(_session_master) 
+		and (_session_master.is_in_connection_state() or not is_active_session())
+	):
 		return _session_master
 	
 	if not _priority_order:

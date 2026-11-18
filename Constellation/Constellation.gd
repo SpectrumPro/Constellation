@@ -477,6 +477,11 @@ func get_ip_link_state() -> bool:
 	return _ip_link_up
 
 
+## Returns true if the network state is ready
+func is_network_ready() -> bool:
+	return _network_state == NetworkState.READY
+
+
 ## Sets the NetworkState
 func _set_network_state(p_network_state: NetworkState) -> bool:
 	if p_network_state == _network_state:

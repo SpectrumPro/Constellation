@@ -259,14 +259,14 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_close_network()
 	_stop_discovery()
 	
-	for node: ConstellationNode in _known_nodes.values():
+	for node: ConstellationNode in get_all_nodes():
 		if node == _local_node:
 			continue
 		
 		node.delete()
 		remove_child(node)
 	
-	for session: ConstellationSession in _known_sessions.values():
+	for session: ConstellationSession in get_all_sessions():
 		session.delete()
 		remove_child(session)
 	

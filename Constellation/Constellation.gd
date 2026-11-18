@@ -9,6 +9,9 @@ class_name Constellation extends NetworkHandler
 ## Emited when the IP or interface name is changed
 signal ip_and_interface_changed(ipaddr: IPAddr)
 
+## Emitted when the ip link state changes
+signal ip_link_state_changed(ip_link_state: bool)
+
 
 ## enum for LinkCheckMode
 enum LinkCheckMode {
@@ -136,6 +139,13 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 		_local_node.get_session, 
 		[_local_node.session_changed]
 	).set_class_filter(NetworkItem, ConstellationSession)
+	
+	_settings.register_status(
+		"IpLinkState",
+		Data.Type.BOOL,
+		get_ip_link_state,
+		[ip_link_state_changed]
+	)
 	
 	set_process(false)
 
@@ -460,6 +470,11 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 		return unknown_node
 	
 	return null
+
+
+## Returns true if the ip link state is UP, otherwise false
+func get_ip_link_state() -> bool:
+	return _ip_link_up
 
 
 ## Sets the NetworkState
@@ -937,6 +952,7 @@ func _check_network_link(p_disable_auto_action: bool = false) -> bool:
 		return _ip_link_up
 	
 	_ip_link_up = new_link_state
+	ip_link_state_changed.emit(_ip_link_up)
 	
 	if p_disable_auto_action:
 		return _ip_link_up

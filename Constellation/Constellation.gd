@@ -10,6 +10,13 @@ class_name Constellation extends NetworkHandler
 signal ip_and_interface_changed(ipaddr: IPAddr)
 
 
+## enum for LinkCheckMode
+enum LinkCheckMode {
+	REGULAR,		## Uses LINK_CHECK_INTERVAL for checking link state during regular operation
+	RAPID,			## Uses LINK_CHECK_ERROR_INTERVAL to wait for link UP state while is is currently down
+}
+
+
 ## The Multicast group
 const MCAST_GROUP: String = "239.38.23.1"
 
@@ -99,6 +106,12 @@ var _link_up_restart_delay: Timer = Timer.new()
 
 ## Stores all multi-part buffers still awaiting new data
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
+
+## Stores the interval times for each LinkCheckMode
+var _link_check_mode_times: Dictionary[LinkCheckMode, float] = {
+		LinkCheckMode.REGULAR: LINK_CHECK_INTERVAL,
+		LinkCheckMode.RAPID: LINK_CHECK_ERROR_INTERVAL
+	}
 
 
 ## init
@@ -544,7 +557,7 @@ func _bind_network() -> void:
 		_log("UDP bound on port: ", _udp_port)
 		
 		_ip_link_up = true
-		_link_check_timer.start()
+		_start_link_check(LinkCheckMode.REGULAR)
 		
 		_set_network_state(NetworkState.BOUND)
 		set_process(true)
@@ -559,7 +572,7 @@ func _close_network() -> void:
 	_udp_socket.close()
 	
 	_ip_link_up = false
-	_link_check_timer.stop()
+	_stop_link_check()
 	set_process(false)
 
 
@@ -886,8 +899,30 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 		p_multi_part.free()
 
 
-## Checks the link status of the network interface being used
-func _check_network_link() -> void:
+## Starts the link check interval timer with the given mode
+func _start_link_check(p_mode: LinkCheckMode) -> void:
+	_link_check_timer.start(_link_check_mode_times[p_mode])
+
+
+## Stops the link check interval timer
+func _stop_link_check() -> void:
+	_link_check_timer.stop()
+
+
+## Starts the link up restart delay, 
+## delayed to allow time for ip asignment and kernel config before binding ports
+func _start_link_up_restart_delay() -> void:
+	_link_up_restart_delay.start()
+
+
+## Stops the link up restart delay
+func _stop_link_up_restart_delay() -> void:
+	_link_up_restart_delay.stop()
+
+
+## Checks and returns the link status of the network interface being used
+## if p_disable_auto_action, actions that happen when link goes up or down are disabled
+func _check_network_link(p_disable_auto_action: bool = false) -> bool:
 	var new_link_state: bool = false
 	
 	for interface: Dictionary in IP.get_local_interfaces():
@@ -899,30 +934,46 @@ func _check_network_link() -> void:
 			break
 	
 	if new_link_state == _ip_link_up:
-		return
+		return _ip_link_up
+	
+	_ip_link_up = new_link_state
+	
+	if p_disable_auto_action:
+		return _ip_link_up
 	
 	if new_link_state:
 		_log("Network link is back UP")
-		_link_up_restart_delay.start()
-		_link_check_timer.start(LINK_CHECK_INTERVAL)
+		
+		_start_link_up_restart_delay()
+		_start_link_check(LinkCheckMode.REGULAR)
 	
 	else:
 		_log("Network link is DOWN")
 		
+		_stop_discovery()
 		_close_network()
 		_set_network_state(NetworkState.ERROR)
 		
-		_link_up_restart_delay.stop()
-		_link_check_timer.start(LINK_CHECK_ERROR_INTERVAL)
+		_stop_link_up_restart_delay()
+		_start_link_check(LinkCheckMode.RAPID)
 	
-	_ip_link_up = new_link_state
+	return _ip_link_up
 
 
 ## Handles re-binding network sockets when link is back up
 func _handle_link_up() -> void:
+	_close_network()
 	_bind_network()
+	
 	if _network_state != NetworkState.BOUND:
-		_log_error("Error staring network")
+		
+		if _check_network_link(true):
+			_log("Error re-binding network, trying again")
+			_start_link_up_restart_delay()
+		else:
+			_log("Network link when DOWN while waiting to re-bind, trying again")
+			_start_link_check(LinkCheckMode.RAPID)
+			
 		return
 	
 	_set_network_state(NetworkState.READY)

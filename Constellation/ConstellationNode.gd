@@ -633,8 +633,9 @@ func delete() -> void:
 	super.delete()
 	
 	disconnect_node(true, true)
-	_udp_socket.close()
+	_leave_session()
 	
+	_udp_socket.close()
 	_connection_state = ConnectionState.UNKNOWN
 
 

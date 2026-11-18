@@ -350,6 +350,16 @@ func leave_session() -> bool:
 	return _local_node.leave_session()
 
 
+## Removes all OFFLINE and UNKNOWN nodes
+func remove_offline_nodes() -> void:
+	for node: ConstellationNode in get_all_nodes():
+		if node.is_in_offline_state():
+			node.delete()
+		
+		_known_nodes.erase(node)
+		_unknown_nodes.erase(node)
+
+
 ## Sets the IP and interface name from an IPAddr object
 func set_ip_and_interface(p_ipaddr: IPAddr) -> bool:
 	if not p_ipaddr.is_valid():

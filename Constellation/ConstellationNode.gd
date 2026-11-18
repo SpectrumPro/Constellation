@@ -1116,7 +1116,10 @@ func _handle_command(p_command: ConstaNetCommand) -> void:
 
 ## Updates this nodes info from a discovery packet
 func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	if p_discovery.target_id or is_local():
+	if p_discovery.target_id and p_discovery.target_id != _node_id:
+		return
+	
+	if is_local():
 		return
 	
 	var reconnect_udp: bool = _node_ip != p_discovery.node_ip or _node_udp_port != p_discovery.udp_port

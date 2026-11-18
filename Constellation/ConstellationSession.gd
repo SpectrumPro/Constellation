@@ -327,9 +327,9 @@ func _set_session_id(p_session_id: String) -> bool:
 	return true
 
 
-## Sets the session master
+## Sets the session master, returns true if the master was changed
 func _set_session_master(p_session_master: ConstellationNode) -> bool:
-	if p_session_master == _session_master:
+	if not _network.is_network_ready():
 		return false
 	
 	if p_session_master == _session_master:

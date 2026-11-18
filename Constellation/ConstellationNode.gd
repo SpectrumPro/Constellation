@@ -795,9 +795,12 @@ func _final_disconnect() -> void:
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 	
-	_set_connection_status(ConnectionState.DISCOVERED)
-	_network._logv("Successfully disconnected from: ", _name)
+	if _network.is_network_ready():
+		_set_connection_status(ConnectionState.DISCOVERED)
+	else:
+		_set_connection_status(ConnectionState.OFFLINE)
 	
+	_network._logv("Successfully disconnected from: ", _name)
 	_set_ping(NAN)
 
 

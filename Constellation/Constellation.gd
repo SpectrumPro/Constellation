@@ -584,12 +584,17 @@ func _bind_network() -> void:
 
 
 ## Closes network sockets
-func _close_network() -> void:
+## if p_disconnect_nodes == true, all nodes will be force disconnected
+func _close_network(p_disconnect_nodes: bool = false) -> void:
 	_mcast_tx.close()
 	_mcast_rx.close()
 	
 	_tcp_socket.stop()
 	_udp_socket.close()
+	
+	if p_disconnect_nodes:
+		for node: ConstellationNode in _known_nodes.values():
+			node.disconnect_node(false, true)
 	
 	_ip_link_up = false
 	_stop_link_check()
@@ -653,7 +658,7 @@ func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetD
 
 ## Sends the given message to multicast
 func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
-	if _network_state == NetworkState.OFFLINE:
+	if not is_network_ready():
 		return ERR_UNAVAILABLE
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
@@ -971,9 +976,9 @@ func _check_network_link(p_disable_auto_action: bool = false) -> bool:
 	else:
 		_log("Network link is DOWN")
 		
-		_stop_discovery()
-		_close_network()
 		_set_network_state(NetworkState.ERROR)
+		_stop_discovery()
+		_close_network(true)
 		
 		_stop_link_up_restart_delay()
 		_start_link_check(LinkCheckMode.RAPID)
@@ -983,7 +988,6 @@ func _check_network_link(p_disable_auto_action: bool = false) -> bool:
 
 ## Handles re-binding network sockets when link is back up
 func _handle_link_up() -> void:
-	_close_network()
 	_bind_network()
 	
 	if _network_state != NetworkState.BOUND:

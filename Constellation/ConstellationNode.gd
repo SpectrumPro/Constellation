@@ -161,7 +161,7 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 	node._set_node_id(p_node_id)
 	node._mark_as_unknown(true)
 	node._set_node_name("UnknownNode")
-	node._set_connection_status(ConnectionState.UNKNOWN)
+	node._set_connection_state(ConnectionState.UNKNOWN)
 	
 	return node
 
@@ -255,7 +255,7 @@ func connect_node() -> Error:
 	if _heartbeat_ping_active:
 		_stop_heartbeat_ping()
 	
-	_set_connection_status(ConnectionState.CONNECTING)
+	_set_connection_state(ConnectionState.CONNECTING)
 	_tcp_socket.bind(0, _network.get_ip_and_interface().get_address())
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	
@@ -266,7 +266,7 @@ func connect_node() -> Error:
 	)
 	
 	if err_code:
-		_set_connection_status(ConnectionState.CONNECTION_ERROR)
+		_set_connection_state(ConnectionState.CONNECTION_ERROR)
 	else:
 		_tcp_socket.set_no_delay(true)
 	
@@ -300,7 +300,7 @@ func disconnect_node(p_clear_locks: bool = false, p_force: bool = false) -> Erro
 			ConstaNetHeartBeat.Mode.DISCONNECTION, 
 			ConstaNetHeadder.Flags.REQUEST,
 		)
-		_set_connection_status(ConnectionState.AWAITING_DISCONNECT_ACK)
+		_set_connection_state(ConnectionState.AWAITING_DISCONNECT_ACK)
 	
 	if p_clear_locks:
 		_connection_locks.clear()
@@ -651,7 +651,7 @@ func _set_role_flags(p_role_flags: int) -> bool:
 
 
 ## Sets the ConnectionState
-func _set_connection_status(p_status: ConnectionState) -> bool:
+func _set_connection_state(p_status: ConnectionState) -> bool:
 	if _connection_state == p_status:
 		return false
 	
@@ -786,7 +786,7 @@ func _final_connect() -> void:
 		TransportMode.TCP
 	)
 	
-	_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+	_set_connection_state(NetworkNode.ConnectionState.CONNECTED)
 	_start_heartbeat_ping()
 
 
@@ -798,9 +798,9 @@ func _final_disconnect() -> void:
 	_tcp_previous_status = -1
 	
 	if _network.is_network_ready():
-		_set_connection_status(ConnectionState.DISCOVERED)
+		_set_connection_state(ConnectionState.DISCOVERED)
 	else:
-		_set_connection_status(ConnectionState.OFFLINE)
+		_set_connection_state(ConnectionState.OFFLINE)
 	
 	_network._logv("Successfully disconnected from: ", _name)
 	_set_ping(NAN)
@@ -981,7 +981,7 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		_send_discovery_acknowledment()
 	
 	if is_in_offline_state() or is_in_error_state():
-		_set_connection_status(ConnectionState.DISCOVERED)
+		_set_connection_state(ConnectionState.DISCOVERED)
 	
 	if is_in_discovered_state() and _connection_locks.size():
 		_network._logv(
@@ -997,7 +997,7 @@ func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	disconnect_node(false, true)
 	_leave_session()
 	_udp_socket.close()
-	_set_connection_status(ConnectionState.OFFLINE)
+	_set_connection_state(ConnectionState.OFFLINE)
 
 
 ## Handles a ConstaNetSetAttribute message
@@ -1103,7 +1103,7 @@ func _handle_heartbeat_disconnection(p_heart_beat: ConstaNetHeartBeat) -> void:
 			else:
 				_disconnect_ack_timeout_timer.stop()
 				_network._logv("Remote node: ", _name, " has refused a disconnection attempt")
-				_set_connection_status(ConnectionState.CONNECTED)
+				_set_connection_state(ConnectionState.CONNECTED)
 
 
 ## Handles a ConstaNetCommand message
@@ -1193,7 +1193,7 @@ func _process_missed_heartbeat_ping(p_sequence: int) -> void:
 	)
 	
 	_heart_beat_send_time.erase(p_sequence)
-	_set_connection_status(ConnectionState.LOST_CONNECTION)
+	_set_connection_state(ConnectionState.LOST_CONNECTION)
 	
 	_start_rapid_reconnect()
 
@@ -1255,7 +1255,7 @@ func _handle_tcp_status_update(p_status: StreamPeerTCP.Status) -> void:
 func _handle_tcp_status_connected() -> void:
 	match _connection_state:
 		ConnectionState.CONNECTING:
-			_set_connection_status(ConnectionState.AWAITING_CONNECTION_ACK)
+			_set_connection_state(ConnectionState.AWAITING_CONNECTION_ACK)
 			_send_heartbeat(ConstaNetHeartBeat.Mode.CONNECTION, ConstaNetHeadder.Flags.REQUEST, TransportMode.TCP)
 			_connect_ack_timeout_timer.start(CONNECT_ACK_TIMEOUT)
 
@@ -1264,10 +1264,10 @@ func _handle_tcp_status_connected() -> void:
 func _handle_tcp_status_error() -> void:
 	match _connection_state:
 		ConnectionState.CONNECTING:
-			_set_connection_status(ConnectionState.CONNECTION_ERROR)
+			_set_connection_state(ConnectionState.CONNECTION_ERROR)
 		ConnectionState.CONNECTED:
 			_network._log("TCP Connection error to node: \"", _name, "\"")
-			_set_connection_status(ConnectionState.LOST_CONNECTION)
+			_set_connection_state(ConnectionState.LOST_CONNECTION)
 			_start_rapid_reconnect()
 
 
@@ -1275,7 +1275,7 @@ func _handle_tcp_status_error() -> void:
 func _on_connect_act_timeout() -> void:
 	if _connection_state == ConnectionState.AWAITING_CONNECTION_ACK:
 		_network._logv("Node: \"", _name, "\" has taken too to responde to Connect ACK.")
-		_set_connection_status(ConnectionState.LOST_CONNECTION)
+		_set_connection_state(ConnectionState.LOST_CONNECTION)
 		_start_rapid_reconnect()
 
 
@@ -1290,7 +1290,7 @@ func _on_disconnect_act_timeout() -> void:
 func _on_discovery_timeout() -> void:
 	if is_in_discovered_state():
 		_network._log("Node: \"", get_node_name(), "\" has taken too long to respond ")
-		_set_connection_status(ConnectionState.OFFLINE)
+		_set_connection_state(ConnectionState.OFFLINE)
 		_discovery_timeout_timer.stop()
 
 
@@ -1304,7 +1304,7 @@ func _on_rapid_interval_timeout() -> void:
 			"\"", _name, "\" failed to respond after ",
 			_rapid_reconnect_attempts, " attempts"
 		)
-		_set_connection_status(ConnectionState.OFFLINE)
+		_set_connection_state(ConnectionState.OFFLINE)
 		disconnect_node(false, true)
 	
 	else:

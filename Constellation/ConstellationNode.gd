@@ -1141,7 +1141,7 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		var errcode: Error = _udp_socket.connect_to_host(_node_ip, _node_udp_port)
 		_network._logv(_name, ":_update_from_discovery reconnect_udp == true, errcode: ", error_string(errcode))
 	
-	if reconnect_tcp and _connection_locks:
+	if reconnect_tcp and _connection_locks.size():
 		var errcode: Error = connect_node()
 		_network._logv(_name, ":_update_from_discovery reconnect_tcp == true, errcode: ", error_string(errcode))
 

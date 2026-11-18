@@ -355,9 +355,9 @@ func remove_offline_nodes() -> void:
 	for node: ConstellationNode in get_all_nodes():
 		if node.is_in_offline_state():
 			node.delete()
-		
-		_known_nodes.erase(node)
-		_unknown_nodes.erase(node)
+			
+			_known_nodes.erase(node.get_node_id())
+			_unknown_nodes.erase(node.get_node_id())
 
 
 ## Sets the IP and interface name from an IPAddr object

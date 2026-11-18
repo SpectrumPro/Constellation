@@ -995,7 +995,6 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 ## Handles a ConstaNetGoodbye message
 func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	disconnect_node(false, true)
-	_leave_session()
 	_udp_socket.close()
 	_set_connection_state(ConnectionState.OFFLINE)
 

@@ -714,6 +714,9 @@ func _set_session(p_session: ConstellationSession, p_auto_priority: bool = true,
 
 ## Handles this node joining a session
 func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
+	if p_session == _session:
+		return false
+	
 	if _session:
 		_leave_session()
 	

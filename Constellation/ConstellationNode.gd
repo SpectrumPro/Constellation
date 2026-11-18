@@ -1112,8 +1112,8 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 	if p_discovery.target_id or is_local():
 		return
 	
-	var reconnect_udp: bool = _node_ip != p_discovery.node_ip and _node_udp_port != p_discovery.udp_port
-	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip and _node_tcp_port != p_discovery.tcp_port
+	var reconnect_udp: bool = _node_ip != p_discovery.node_ip or _node_udp_port != p_discovery.udp_port
+	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip or _node_tcp_port != p_discovery.tcp_port
 	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)

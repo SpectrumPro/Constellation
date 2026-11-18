@@ -324,10 +324,13 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if p_session_master == _session_master:
 		return false
 	
-	if is_instance_valid(_session_master):
-		_session_master._remove_session_master_mark()
+	if p_session_master == _session_master:
+		return false
 	
 	if not is_instance_valid(p_session_master):
+		if is_instance_valid(_session_master):
+			_session_master._remove_session_master_mark()
+		
 		_session_master = null
 		master_changed.emit(null)
 		return true
@@ -337,6 +340,9 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	
 	if not can_be_session_master(p_session_master):
 		return false
+	
+	if is_instance_valid(_session_master):
+		_session_master._remove_session_master_mark()
 	
 	_session_master = p_session_master
 	_session_master._mark_as_session_master()

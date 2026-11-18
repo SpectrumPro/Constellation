@@ -129,7 +129,7 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
 	
-	settings_manager.register_setting(
+	_settings.register_setting(
 		"Session", 
 		Data.Type.OBJECT, 
 		_local_node.set_session, 

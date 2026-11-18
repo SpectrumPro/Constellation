@@ -161,6 +161,7 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 	node._set_node_id(p_node_id)
 	node._mark_as_unknown(true)
 	node._set_node_name("UnknownNode")
+	node._set_connection_status(ConnectionState.UNKNOWN)
 	
 	return node
 
@@ -239,7 +240,7 @@ func _process(delta: float) -> void:
 
 ## Attempts to start a connection with this node by sending a connection request
 func connect_node() -> Error:
-	if is_local():
+	if is_local() or _connection_state == ConnectionState.UNKNOWN:
 		return ERR_UNAVAILABLE
 	
 	if is_in_connection_state():

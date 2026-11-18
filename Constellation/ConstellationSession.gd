@@ -523,9 +523,9 @@ func _elect_new_master() -> ConstellationNode:
 			if _set_session_master(candidate):
 				return candidate
 			else:
-				return null
+				return _session_master
 	
-	return null
+	return _session_master
 
 
 ## Updates the details of this node with a ConstaNetSessionAnnounce message

@@ -900,13 +900,15 @@ func _send_heartbeat(
 	message.sequence = p_sequence
 	
 	var errcode: Error = send_message(message, p_transport_mode)
-	_network._logv(
-		"Sending HeartBeat: ", message.get_flags_human(),  
-		", Mode: ", ConstaNetHeartBeat.Mode.keys()[p_mode], 
-		", via: ", TransportMode.keys()[p_transport_mode], 
-		", to: ", get_uname(), 
-		", errcode: ", error_string(errcode)
-	)
+	
+	if p_mode != ConstaNetHeartBeat.Mode.HEARTBEAT or errcode:
+		_network._logv(
+			"Sending HeartBeat: ", message.get_flags_human(),  
+			", Mode: ", ConstaNetHeartBeat.Mode.keys()[p_mode], 
+			", via: ", TransportMode.keys()[p_transport_mode], 
+			", to: ", get_uname(), 
+			", errcode: ", error_string(errcode)
+		)
 
 
 ## Sends a heartbeat ping and records the timestamp
@@ -1180,8 +1182,6 @@ func _process_heartbeat_ping(p_heartbeat: ConstaNetHeartBeat) -> void:
 	else:
 		_heart_beat_send_time.erase(sequence)
 		_set_ping(rtt)
-		
-		_network._logv("RTT time to node: \"", _name, "\" changed to: ", rtt, "ms")
 
 
 ## Processes a missed heartbeat message

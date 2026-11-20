@@ -341,6 +341,8 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 		
 		_session_master = null
 		master_changed.emit(null)
+		
+		_set_session_state(SessionState.MISSING_MASTER)
 		return true
 	
 	if not _nodes.has(p_session_master):
@@ -356,6 +358,8 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	_session_master._mark_as_session_master()
 	
 	master_changed.emit(_session_master)
+	_set_session_state(SessionState.NORMAL)
+	
 	return true
 
 

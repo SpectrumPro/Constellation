@@ -651,7 +651,7 @@ func _set_role_flags(p_role_flags: int) -> bool:
 
 
 ## Sets the ConnectionState
-func _set_connection_state(p_status: ConnectionState) -> bool:
+func _set_connection_state(p_status: ConnectionState, p_disable_actions: bool = false) -> bool:
 	if _connection_state == p_status:
 		return false
 	
@@ -664,6 +664,13 @@ func _set_connection_state(p_status: ConnectionState) -> bool:
 	
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
+	
+	if p_disable_actions:
+		return true
+	
+	match p_status:
+		ConnectionState.LOST_CONNECTION:
+			_network._check_network_link()
 	
 	return true
 

@@ -19,6 +19,9 @@ signal node_ip_changed(ip: String)
 ## The MTU for udp payloads, if this is exceeded the command will be sent as a multipart message
 const UDP_MTP: int = 1000
 
+## Time in seconds to wait for a connect ACK message before attempting rapid reconnect
+const CONNECT_ACK_TIMEOUT: float = 2.0
+
 ## Time in seconds to wait for a disconnect ACK message before forcing a disconnect
 const DISCONNECT_ACK_TIMEOUT: float = 2.0
 
@@ -102,6 +105,9 @@ var _rapid_reconnect_attempts: int = 0
 ## True if rapid reconnect is active
 var _rapid_reconnect_active: bool = false
 
+## Timer to wait for a connect ACK message before attempting rapid reconnect
+var _connect_ack_timeout_timer: Timer = Timer.new()
+
 ## Timer to wait for a disconnect ACK message before forcing a disconnect
 var _disconnect_ack_timeout_timer: Timer = Timer.new()
 
@@ -142,7 +148,7 @@ static func create_from_discovery(p_disco: ConstaNetDiscovery) -> ConstellationN
 static func create_local_node() -> ConstellationNode:
 	var node: ConstellationNode = ConstellationNode.new()
 	
-	node._connection_state = ConnectionState.CONNECTED
+	node._connection_state = ConnectionState.LOCAL
 	node._node_flags = NodeFlags.LOCAL_NODE
 	
 	return node
@@ -155,6 +161,7 @@ static func create_unknown_node(p_node_id: String) -> ConstellationNode:
 	node._set_node_id(p_node_id)
 	node._mark_as_unknown(true)
 	node._set_node_name("UnknownNode")
+	node._set_connection_state(ConnectionState.UNKNOWN)
 	
 	return node
 
@@ -188,6 +195,11 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 
 ## ready
 func _ready() -> void:
+	_connect_ack_timeout_timer.set_autostart(false)
+	_connect_ack_timeout_timer.set_one_shot(true)
+	_connect_ack_timeout_timer.set_wait_time(CONNECT_ACK_TIMEOUT)
+	_connect_ack_timeout_timer.timeout.connect(_on_connect_act_timeout)
+	
 	_disconnect_ack_timeout_timer.set_autostart(false)
 	_disconnect_ack_timeout_timer.set_one_shot(true)
 	_disconnect_ack_timeout_timer.set_wait_time(DISCONNECT_ACK_TIMEOUT)
@@ -208,6 +220,7 @@ func _ready() -> void:
 	_heartbeat_ping_timer.set_wait_time(HEARTBEAT_PING_INTERVAL)
 	_heartbeat_ping_timer.timeout.connect(_on_heartbeat_ping_timeout)
 	
+	add_child(_connect_ack_timeout_timer)
 	add_child(_disconnect_ack_timeout_timer)
 	add_child(_rapid_reconnect_timer)
 	add_child(_heartbeat_ping_timer)
@@ -227,7 +240,7 @@ func _process(delta: float) -> void:
 
 ## Attempts to start a connection with this node by sending a connection request
 func connect_node() -> Error:
-	if is_local():
+	if is_local() or _connection_state == ConnectionState.UNKNOWN:
 		return ERR_UNAVAILABLE
 	
 	if is_in_connection_state():
@@ -242,7 +255,8 @@ func connect_node() -> Error:
 	if _heartbeat_ping_active:
 		_stop_heartbeat_ping()
 	
-	_set_connection_status(ConnectionState.CONNECTING)
+	_set_connection_state(ConnectionState.CONNECTING)
+	_tcp_socket.bind(0, _network.get_ip_and_interface().get_address())
 	var err_code: Error = _tcp_socket.connect_to_host(_node_ip, _node_tcp_port)
 	
 	_network._logv(
@@ -252,7 +266,7 @@ func connect_node() -> Error:
 	)
 	
 	if err_code:
-		_set_connection_status(ConnectionState.CONNECTION_ERROR)
+		_set_connection_state(ConnectionState.CONNECTION_ERROR)
 	else:
 		_tcp_socket.set_no_delay(true)
 	
@@ -286,7 +300,7 @@ func disconnect_node(p_clear_locks: bool = false, p_force: bool = false) -> Erro
 			ConstaNetHeartBeat.Mode.DISCONNECTION, 
 			ConstaNetHeadder.Flags.REQUEST,
 		)
-		_set_connection_status(ConnectionState.AWAITING_DISCONNECT_ACK)
+		_set_connection_state(ConnectionState.AWAITING_DISCONNECT_ACK)
 	
 	if p_clear_locks:
 		_connection_locks.clear()
@@ -619,8 +633,9 @@ func delete() -> void:
 	super.delete()
 	
 	disconnect_node(true, true)
-	_udp_socket.close()
+	_leave_session()
 	
+	_udp_socket.close()
 	_connection_state = ConnectionState.UNKNOWN
 
 
@@ -636,7 +651,7 @@ func _set_role_flags(p_role_flags: int) -> bool:
 
 
 ## Sets the ConnectionState
-func _set_connection_status(p_status: ConnectionState) -> bool:
+func _set_connection_state(p_status: ConnectionState, p_disable_actions: bool = false) -> bool:
 	if _connection_state == p_status:
 		return false
 	
@@ -649,6 +664,13 @@ func _set_connection_status(p_status: ConnectionState) -> bool:
 	
 	_connection_state = p_status
 	connection_state_changed.emit(_connection_state)
+	
+	if p_disable_actions:
+		return true
+	
+	match p_status:
+		ConnectionState.LOST_CONNECTION:
+			_network._check_network_link()
 	
 	return true
 
@@ -701,6 +723,9 @@ func _set_session(p_session: ConstellationSession, p_auto_priority: bool = true,
 
 ## Handles this node joining a session
 func _join_session(p_session: ConstellationSession, p_auto_priority: bool = true, p_priority: int = -1) -> bool:
+	if p_session == _session:
+		return false
+	
 	if _session:
 		_leave_session()
 	
@@ -760,13 +785,15 @@ func _is_sequence_valid(p_sequence: int) -> bool:
 
 ## Handles the final stage of the connect process after the HeartBeat handshake
 func _final_connect() -> void:
+	_connect_ack_timeout_timer.stop()
+	
 	_send_heartbeat(
 		ConstaNetHeartBeat.Mode.CONNECTION, 
 		ConstaNetHeadder.Flags.ALLOWED | ConstaNetHeadder.Flags.ACKNOWLEDGMENT,
 		TransportMode.TCP
 	)
 	
-	_set_connection_status(NetworkNode.ConnectionState.CONNECTED)
+	_set_connection_state(NetworkNode.ConnectionState.CONNECTED)
 	_start_heartbeat_ping()
 
 
@@ -777,9 +804,12 @@ func _final_disconnect() -> void:
 	_tcp_socket.disconnect_from_host()
 	_tcp_previous_status = -1
 	
-	_set_connection_status(ConnectionState.DISCOVERED)
-	_network._logv("Successfully disconnected from: ", _name)
+	if _network.is_network_ready():
+		_set_connection_state(ConnectionState.DISCOVERED)
+	else:
+		_set_connection_state(ConnectionState.OFFLINE)
 	
+	_network._logv("Successfully disconnected from: ", _name)
 	_set_ping(NAN)
 
 
@@ -877,13 +907,15 @@ func _send_heartbeat(
 	message.sequence = p_sequence
 	
 	var errcode: Error = send_message(message, p_transport_mode)
-	_network._logv(
-		"Sending HeartBeat: ", message.get_flags_human(),  
-		", Mode: ", ConstaNetHeartBeat.Mode.keys()[p_mode], 
-		", via: ", TransportMode.keys()[p_transport_mode], 
-		", to: ", get_uname(), 
-		", errcode: ", error_string(errcode)
-	)
+	
+	if p_mode != ConstaNetHeartBeat.Mode.HEARTBEAT or errcode:
+		_network._logv(
+			"Sending HeartBeat: ", message.get_flags_human(),  
+			", Mode: ", ConstaNetHeartBeat.Mode.keys()[p_mode], 
+			", via: ", TransportMode.keys()[p_transport_mode], 
+			", to: ", get_uname(), 
+			", errcode: ", error_string(errcode)
+		)
 
 
 ## Sends a heartbeat ping and records the timestamp
@@ -913,7 +945,7 @@ func _send_set_attribute(
 	set_attribute.attribute = ConstaNetSetAttribute.Attribute.SESSION
 	set_attribute.value = p_value
 	
-	var errcode: Error = send_message_udp(set_attribute)
+	var errcode: Error = send_message(set_attribute)
 	_network._log(
 		"Sent SetAttribute to: \"", _name, "\"",
 		", attribute: ", ConstaNetSetAttribute.Attribute.keys()[p_attribute],
@@ -958,7 +990,7 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		_send_discovery_acknowledment()
 	
 	if is_in_offline_state() or is_in_error_state():
-		_set_connection_status(ConnectionState.DISCOVERED)
+		_set_connection_state(ConnectionState.DISCOVERED)
 	
 	if is_in_discovered_state() and _connection_locks.size():
 		_network._logv(
@@ -972,9 +1004,8 @@ func _handle_discovery(p_discovery: ConstaNetDiscovery) -> void:
 ## Handles a ConstaNetGoodbye message
 func _handle_goodbye(p_goodbye: ConstaNetGoodbye) -> void:
 	disconnect_node(false, true)
-	_leave_session()
 	_udp_socket.close()
-	_set_connection_status(ConnectionState.OFFLINE)
+	_set_connection_state(ConnectionState.OFFLINE)
 
 
 ## Handles a ConstaNetSetAttribute message
@@ -1080,7 +1111,7 @@ func _handle_heartbeat_disconnection(p_heart_beat: ConstaNetHeartBeat) -> void:
 			else:
 				_disconnect_ack_timeout_timer.stop()
 				_network._logv("Remote node: ", _name, " has refused a disconnection attempt")
-				_set_connection_status(ConnectionState.CONNECTED)
+				_set_connection_state(ConnectionState.CONNECTED)
 
 
 ## Handles a ConstaNetCommand message
@@ -1094,11 +1125,14 @@ func _handle_command(p_command: ConstaNetCommand) -> void:
 
 ## Updates this nodes info from a discovery packet
 func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
-	if p_discovery.target_id or is_local():
+	if p_discovery.target_id and p_discovery.target_id != _node_id:
 		return
 	
-	var reconnect_udp: bool = _node_ip != p_discovery.node_ip and _node_udp_port != p_discovery.udp_port
-	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip and _node_tcp_port != p_discovery.tcp_port
+	if is_local():
+		return
+	
+	var reconnect_udp: bool = _node_ip != p_discovery.node_ip or _node_udp_port != p_discovery.udp_port
+	var reconnect_tcp: bool = _node_ip != p_discovery.node_ip or _node_tcp_port != p_discovery.tcp_port
 	
 	_set_node_name(p_discovery.node_name)
 	_set_role_flags(p_discovery.role_flags)
@@ -1115,7 +1149,7 @@ func _update_from_discovery(p_discovery: ConstaNetDiscovery) -> void:
 		var errcode: Error = _udp_socket.connect_to_host(_node_ip, _node_udp_port)
 		_network._logv(_name, ":_update_from_discovery reconnect_udp == true, errcode: ", error_string(errcode))
 	
-	if reconnect_tcp and _connection_locks:
+	if reconnect_tcp and _connection_locks.size():
 		var errcode: Error = connect_node()
 		_network._logv(_name, ":_update_from_discovery reconnect_tcp == true, errcode: ", error_string(errcode))
 
@@ -1155,8 +1189,6 @@ func _process_heartbeat_ping(p_heartbeat: ConstaNetHeartBeat) -> void:
 	else:
 		_heart_beat_send_time.erase(sequence)
 		_set_ping(rtt)
-		
-		_network._logv("RTT time to node: \"", _name, "\" changed to: ", rtt, "ms")
 
 
 ## Processes a missed heartbeat message
@@ -1167,7 +1199,7 @@ func _process_missed_heartbeat_ping(p_sequence: int) -> void:
 	)
 	
 	_heart_beat_send_time.erase(p_sequence)
-	_set_connection_status(ConnectionState.LOST_CONNECTION)
+	_set_connection_state(ConnectionState.LOST_CONNECTION)
 	
 	_start_rapid_reconnect()
 
@@ -1229,19 +1261,28 @@ func _handle_tcp_status_update(p_status: StreamPeerTCP.Status) -> void:
 func _handle_tcp_status_connected() -> void:
 	match _connection_state:
 		ConnectionState.CONNECTING:
-			_set_connection_status(ConnectionState.AWAITING_CONNECTION_ACK)
+			_set_connection_state(ConnectionState.AWAITING_CONNECTION_ACK)
 			_send_heartbeat(ConstaNetHeartBeat.Mode.CONNECTION, ConstaNetHeadder.Flags.REQUEST, TransportMode.TCP)
+			_connect_ack_timeout_timer.start(CONNECT_ACK_TIMEOUT)
 
 
 ## Handles StreamPeerTCP.Status.STATUS_ERROR
 func _handle_tcp_status_error() -> void:
 	match _connection_state:
 		ConnectionState.CONNECTING:
-			_set_connection_status(ConnectionState.CONNECTION_ERROR)
+			_set_connection_state(ConnectionState.CONNECTION_ERROR)
 		ConnectionState.CONNECTED:
 			_network._log("TCP Connection error to node: \"", _name, "\"")
-			_set_connection_status(ConnectionState.LOST_CONNECTION)
+			_set_connection_state(ConnectionState.LOST_CONNECTION)
 			_start_rapid_reconnect()
+
+
+## Called when the connect ACK timeer times out
+func _on_connect_act_timeout() -> void:
+	if _connection_state == ConnectionState.AWAITING_CONNECTION_ACK:
+		_network._logv("Node: \"", _name, "\" has taken too to responde to Connect ACK.")
+		_set_connection_state(ConnectionState.LOST_CONNECTION)
+		_start_rapid_reconnect()
 
 
 ## Called when the disconnect ACK timeer times out
@@ -1253,9 +1294,9 @@ func _on_disconnect_act_timeout() -> void:
 
 ## Called when the discovery timeer times out
 func _on_discovery_timeout() -> void:
-	if _connection_state == ConnectionState.DISCOVERED:
+	if is_in_discovered_state():
 		_network._log("Node: \"", get_node_name(), "\" has taken too long to respond ")
-		_set_connection_status(ConnectionState.OFFLINE)
+		_set_connection_state(ConnectionState.OFFLINE)
 		_discovery_timeout_timer.stop()
 
 
@@ -1269,7 +1310,7 @@ func _on_rapid_interval_timeout() -> void:
 			"\"", _name, "\" failed to respond after ",
 			_rapid_reconnect_attempts, " attempts"
 		)
-		_set_connection_status(ConnectionState.OFFLINE)
+		_set_connection_state(ConnectionState.OFFLINE)
 		disconnect_node(false, true)
 	
 	else:

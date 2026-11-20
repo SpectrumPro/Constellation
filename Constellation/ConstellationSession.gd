@@ -31,6 +31,10 @@ var _priority_order: Array[int]
 ## Used to decide if ConnectionState.CONNECTING is valid when electing a session master
 var _just_added_node: ConstellationNode = null
 
+## If true, this session active state will not be taken into account when deciding to auto-connect to a just added node
+## Used when creating from discovery to force auto-connect, as the local node may not have been added yet
+var _override_active_session_state: bool = false
+
 ## SignalGroup for all nodes
 var _node_connections: SignalGroup = SignalGroup.new([
 	_on_node_connection_state_changed,
@@ -46,6 +50,9 @@ static func create_from_session_discovery(p_message: ConstaNetSessionDiscovery) 
 	
 	session._set_session_id(p_message.session_id)
 	session._set_name(p_message.session_name)
+	
+	if nodes.has(_network.get_local_node().get_node_id()):
+		session._override_active_session_state = true
 	
 	var add_node: Callable = (func(node_id: String) -> void:
 		var node: ConstellationNode = _network.get_node_from_id(node_id, true)
@@ -63,6 +70,7 @@ static func create_from_session_discovery(p_message: ConstaNetSessionDiscovery) 
 	for node_id: String in nodes:
 		add_node.call(node_id)
 	
+	session._override_active_session_state = false
 	return session
 
 
@@ -285,6 +293,9 @@ func can_be_session_master(p_node: ConstellationNode) -> bool:
 	if not _node_priorities.has_right(p_node):
 		return false
 	
+	if p_node.is_local() and p_node.is_executor():
+		return true
+	
 	var is_new: bool = p_node == _just_added_node
 	var state_valid: bool = p_node.is_in_connection_state() if is_new else p_node.is_node_connected()
 	
@@ -316,17 +327,22 @@ func _set_session_id(p_session_id: String) -> bool:
 	return true
 
 
-## Sets the session master
+## Sets the session master, returns true if the master was changed
 func _set_session_master(p_session_master: ConstellationNode) -> bool:
+	if not _network.is_network_ready():
+		return false
+	
 	if p_session_master == _session_master:
 		return false
 	
-	if is_instance_valid(_session_master):
-		_session_master._remove_session_master_mark()
-	
 	if not is_instance_valid(p_session_master):
+		if is_instance_valid(_session_master):
+			_session_master._remove_session_master_mark()
+		
 		_session_master = null
 		master_changed.emit(null)
+		
+		_set_session_state(SessionState.MISSING_MASTER)
 		return true
 	
 	if not _nodes.has(p_session_master):
@@ -335,10 +351,15 @@ func _set_session_master(p_session_master: ConstellationNode) -> bool:
 	if not can_be_session_master(p_session_master):
 		return false
 	
+	if is_instance_valid(_session_master):
+		_session_master._remove_session_master_mark()
+	
 	_session_master = p_session_master
 	_session_master._mark_as_session_master()
 	
 	master_changed.emit(_session_master)
+	_set_session_state(SessionState.NORMAL)
+	
 	return true
 
 
@@ -442,7 +463,10 @@ func _add_node(p_node: ConstellationNode, p_auto_priority: bool = true, p_priori
 	if p_node.is_executor():
 		_set_node_priority(p_node, _get_next_priority_index() if p_auto_priority else p_priority)
 	
-	if not p_node.is_local() and is_active_session() and not p_node.is_in_connection_state():
+	if (
+		not p_node.is_local() and (is_active_session() or _override_active_session_state)
+		and not p_node.is_in_connection_state()
+	):
 		_network._logv(
 			"A new ConstellationNode: \"", 
 			p_node.get_node_name(), 
@@ -486,7 +510,10 @@ func _remove_node(p_node: ConstellationNode, p_no_delete: bool = false) -> bool:
 
 ## Elects a new session master from the proirity order
 func _elect_new_master() -> ConstellationNode:
-	if _nodes.has(_session_master) and _session_master.is_in_connection_state():
+	if (
+		_nodes.has(_session_master) 
+		and (_session_master.is_in_connection_state() or not is_active_session())
+	):
 		return _session_master
 	
 	if not _priority_order:
@@ -500,9 +527,9 @@ func _elect_new_master() -> ConstellationNode:
 			if _set_session_master(candidate):
 				return candidate
 			else:
-				return null
+				return _session_master
 	
-	return null
+	return _session_master
 
 
 ## Updates the details of this node with a ConstaNetSessionAnnounce message

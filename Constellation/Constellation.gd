@@ -9,6 +9,16 @@ class_name Constellation extends NetworkHandler
 ## Emited when the IP or interface name is changed
 signal ip_and_interface_changed(ipaddr: IPAddr)
 
+## Emitted when the ip link state changes
+signal ip_link_state_changed(ip_link_state: bool)
+
+
+## enum for LinkCheckMode
+enum LinkCheckMode {
+	REGULAR,		## Uses LINK_CHECK_INTERVAL for checking link state during regular operation
+	RAPID,			## Uses LINK_CHECK_ERROR_INTERVAL to wait for link UP state while is is currently down
+}
+
 
 ## The Multicast group
 const MCAST_GROUP: String = "239.38.23.1"
@@ -38,11 +48,6 @@ const LINK_CHECK_RESTART_DELAY: float = 2
 ## Max time to wait in second for the next chunk of a multipart message to be recieved
 ## If the next chunk is not recieved within this time, the whole buffer will be discarded
 const MULTI_PART_MAX_WAIT: int = 10
-
-
-
-## ConstaNetGoodbye reason for going offline
-const GOODBYE_REASON_GOING_OFFLINE: String = "Node Going Offline"
 
 
 ## TCPServer to handle incomming connection from other nodes
@@ -105,6 +110,12 @@ var _link_up_restart_delay: Timer = Timer.new()
 ## Stores all multi-part buffers still awaiting new data
 var _active_multi_parts: Dictionary[String, IncommingMultiPart]
 
+## Stores the interval times for each LinkCheckMode
+var _link_check_mode_times: Dictionary[LinkCheckMode, float] = {
+		LinkCheckMode.REGULAR: LINK_CHECK_INTERVAL,
+		LinkCheckMode.RAPID: LINK_CHECK_ERROR_INTERVAL
+	}
+
 
 ## init
 func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
@@ -121,13 +132,20 @@ func _init(p_uuid: String = UUID.v4(), ...p_args: Array[Variant]) -> void:
 	_local_node.name_changed.connect(_on_local_node_name_changed)
 	_local_node.session_changed.connect(_on_local_node_session_changed)
 	
-	settings_manager.register_setting(
+	_settings.register_setting(
 		"Session", 
 		Data.Type.OBJECT, 
 		_local_node.set_session, 
 		_local_node.get_session, 
 		[_local_node.session_changed]
 	).set_class_filter(NetworkItem, ConstellationSession)
+	
+	_settings.register_status(
+		"IpLinkState",
+		Data.Type.BOOL,
+		get_ip_link_state,
+		[ip_link_state_changed]
+	)
 	
 	set_process(false)
 
@@ -159,7 +177,7 @@ func _ready() -> void:
 	_link_up_restart_delay.set_autostart(false)
 	_link_up_restart_delay.set_one_shot(true)
 	_link_up_restart_delay.set_wait_time(LINK_CHECK_RESTART_DELAY)
-	_link_up_restart_delay.timeout.connect(restart_node)
+	_link_up_restart_delay.timeout.connect(_on_link_up_restart_delay_timeout)
 	
 	add_child(_local_node)
 	add_child(_disco_timer)
@@ -236,27 +254,29 @@ func start_node() -> Error:
 	
 	_set_network_state(NetworkState.READY)
 	_begin_discovery()
+	_check_auto_create_session()
 	
 	return OK
 
 
-## Stops this node, sends a ConstaNetGoodBye message and closes all network sockets and 
+## Stops this node, sends a ConstaNetGoodbye message and closes all network sockets and 
 func stop_node(p_internal_only: bool = false) -> Error:
 	if not p_internal_only:
 		_log("Stopping Node")
-		_send_goodbye(GOODBYE_REASON_GOING_OFFLINE)
+		_send_goodbye()
 	
 	_set_network_state(NetworkState.SHUTTING_DOWN)
 	_close_network()
+	_stop_discovery()
 	
-	for node: ConstellationNode in _known_nodes.values():
+	for node: ConstellationNode in get_all_nodes():
 		if node == _local_node:
 			continue
 		
 		node.delete()
 		remove_child(node)
 	
-	for session: ConstellationSession in _known_sessions.values():
+	for session: ConstellationSession in get_all_sessions():
 		session.delete()
 		remove_child(session)
 	
@@ -267,10 +287,9 @@ func stop_node(p_internal_only: bool = false) -> Error:
 	_unknown_nodes.clear()
 	_unknown_sessions.clear()
 	
-	_disco_timer.stop()
 	_session_auto_create_timer.stop()
-	
 	_set_network_state(NetworkState.OFFLINE)
+	
 	return OK
 
 
@@ -329,6 +348,16 @@ func join_session(p_session: NetworkSession, p_auto_priority: bool = true, p_pri
 ## Leaves the current session, returns true if the session was left successfully
 func leave_session() -> bool:
 	return _local_node.leave_session()
+
+
+## Removes all OFFLINE and UNKNOWN nodes
+func remove_offline_nodes() -> void:
+	for node: ConstellationNode in get_all_nodes():
+		if node.is_in_offline_state():
+			node.delete()
+			
+			_known_nodes.erase(node.get_node_id())
+			_unknown_nodes.erase(node.get_node_id())
 
 
 ## Sets the IP and interface name from an IPAddr object
@@ -453,6 +482,16 @@ func get_node_from_id(p_node_id: String, p_create_unknown: bool = false) -> Cons
 	return null
 
 
+## Returns true if the ip link state is UP, otherwise false
+func get_ip_link_state() -> bool:
+	return _ip_link_up
+
+
+## Returns true if the network state is ready
+func is_network_ready() -> bool:
+	return _network_state == NetworkState.READY
+
+
 ## Sets the NetworkState
 func _set_network_state(p_network_state: NetworkState) -> bool:
 	if p_network_state == _network_state:
@@ -548,22 +587,27 @@ func _bind_network() -> void:
 		_log("UDP bound on port: ", _udp_port)
 		
 		_ip_link_up = true
-		_link_check_timer.start()
+		_start_link_check(LinkCheckMode.REGULAR)
 		
 		_set_network_state(NetworkState.BOUND)
 		set_process(true)
 
 
 ## Closes network sockets
-func _close_network() -> void:
+## if p_disconnect_nodes == true, all nodes will be force disconnected
+func _close_network(p_disconnect_nodes: bool = false) -> void:
 	_mcast_tx.close()
 	_mcast_rx.close()
 	
 	_tcp_socket.stop()
 	_udp_socket.close()
 	
+	if p_disconnect_nodes:
+		for node: ConstellationNode in _known_nodes.values():
+			node.disconnect_node(false, true)
+	
 	_ip_link_up = false
-	_link_check_timer.stop()
+	_stop_link_check()
 	set_process(false)
 
 
@@ -571,14 +615,22 @@ func _close_network() -> void:
 func _begin_discovery() -> void:
 	_disco_timer.start()
 	
+	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
+	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
+
+
+## Stops the discovery process
+func _stop_discovery() -> void:
+	_disco_timer.stop()
+
+
+## Checks config and attempts to auto create a session if permitted
+func _check_auto_create_session() -> void:
 	if ConstellationConfig.auto_create_session and ConstellationConfig.session_id:
 		_session_auto_create_timer.start()
 	
 	elif ConstellationConfig.auto_create_session:
 		_auto_create_session()
-	
-	_send_discovery(ConstaNetHeadder.Flags.REQUEST)
-	_send_session_discovery(ConstaNetHeadder.Flags.REQUEST)
 
 
 ## Handles session auto creation
@@ -616,7 +668,7 @@ func _create_discovery(p_flags: int = 0, p_target_id: String = "") -> ConstaNetD
 
 ## Sends the given message to multicast
 func _send_message_mcast(p_message: ConstaNetHeadder) -> Error:
-	if _network_state == NetworkState.OFFLINE:
+	if not is_network_ready():
 		return ERR_UNAVAILABLE
 	
 	var tx_error: Error = _mcast_tx.put_packet(p_message.get_as_packet())
@@ -664,12 +716,11 @@ func _send_session_discovery(p_flags: int = ConstaNetHeadder.Flags.REQUEST, p_se
 
 
 ## Sends a ConstaNetGoodbye message to multicast
-func _send_goodbye(p_reason: String, p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
+func _send_goodbye(p_flags: int = ConstaNetHeadder.Flags.ANNOUNCEMENT) -> Error:
 	var message: ConstaNetGoodbye = ConstaNetGoodbye.new()
 	
 	message.origin_id = get_node_id()
 	message.flags = p_flags
-	message.reason = p_reason
 	
 	return _send_message_mcast(message)
 
@@ -760,6 +811,7 @@ func _handle_discovery_message(p_discovery: ConstaNetDiscovery, p_source: Stream
 
 ## Handles a ConstaNetSessionDiscovery REQ message
 func _handle_session_discovery_request(p_session_discovery: ConstaNetSessionDiscovery) -> void:
+	_logv("Got SessionDiscovery: ", p_session_discovery.get_flags_human())
 	var current_session: ConstellationSession = _local_node.get_session()
 	
 	if not current_session:
@@ -882,8 +934,30 @@ func _process_multi_part(p_multi_part: IncommingMultiPart) -> void:
 		p_multi_part.free()
 
 
-## Checks the link status of the network interface being used
-func _check_network_link() -> void:
+## Starts the link check interval timer with the given mode
+func _start_link_check(p_mode: LinkCheckMode) -> void:
+	_link_check_timer.start(_link_check_mode_times[p_mode])
+
+
+## Stops the link check interval timer
+func _stop_link_check() -> void:
+	_link_check_timer.stop()
+
+
+## Starts the link up restart delay, 
+## delayed to allow time for ip asignment and kernel config before binding ports
+func _start_link_up_restart_delay() -> void:
+	_link_up_restart_delay.start()
+
+
+## Stops the link up restart delay
+func _stop_link_up_restart_delay() -> void:
+	_link_up_restart_delay.stop()
+
+
+## Checks and returns the link status of the network interface being used
+## if p_disable_auto_action, actions that happen when link goes up or down are disabled
+func _check_network_link(p_disable_auto_action: bool = false) -> bool:
 	var new_link_state: bool = false
 	
 	for interface: Dictionary in IP.get_local_interfaces():
@@ -895,21 +969,50 @@ func _check_network_link() -> void:
 			break
 	
 	if new_link_state == _ip_link_up:
-		return
+		return _ip_link_up
+	
+	_ip_link_up = new_link_state
+	ip_link_state_changed.emit(_ip_link_up)
+	
+	if p_disable_auto_action:
+		return _ip_link_up
 	
 	if new_link_state:
 		_log("Network link is back UP")
-		_link_up_restart_delay.start()
-		_link_check_timer.start(LINK_CHECK_INTERVAL)
+		
+		_start_link_up_restart_delay()
+		_start_link_check(LinkCheckMode.REGULAR)
 	
 	else:
-		_log_error("Network link is DOWN")
-		_set_network_state(NetworkState.ERROR)
+		_log("Network link is DOWN")
 		
-		_link_up_restart_delay.stop()
-		_link_check_timer.start(LINK_CHECK_ERROR_INTERVAL)
+		_set_network_state(NetworkState.ERROR)
+		_stop_discovery()
+		_close_network(true)
+		
+		_stop_link_up_restart_delay()
+		_start_link_check(LinkCheckMode.RAPID)
 	
-	_ip_link_up = new_link_state
+	return _ip_link_up
+
+
+## Handles re-binding network sockets when link is back up
+func _handle_link_up() -> void:
+	_bind_network()
+	
+	if _network_state != NetworkState.BOUND:
+		
+		if _check_network_link(true):
+			_log("Error re-binding network, trying again")
+			_start_link_up_restart_delay()
+		else:
+			_log("Network link when DOWN while waiting to re-bind, trying again")
+			_start_link_check(LinkCheckMode.RAPID)
+			
+		return
+	
+	_set_network_state(NetworkState.READY)
+	_begin_discovery()
 
 
 ## Called when the node name is changed on the LocalNode
@@ -952,6 +1055,12 @@ func _on_session_delete_request(p_session: ConstellationSession) -> void:
 ## Called when the network link timer times out
 func _on_link_check_timeout() -> void:
 	_check_network_link()
+
+
+## Called when the link up restart timer times out
+func _on_link_up_restart_delay_timeout() -> void:
+	if _network_state == NetworkState.ERROR:
+		_handle_link_up()
 
 
 ## ConstellationConfig object
